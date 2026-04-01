@@ -37,6 +37,8 @@ jobs:
       - name: Create file - .env
         run: |
           echo "TEST_ENV=${{ vars.TEST_ENV }}" > .env
+          echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" > .env
+
           echo "GCP_PROJECT_NUMBER=${{ vars.GCP_PROJECT_NUMBER }}" >> .env
         working-directory: functions
 
