@@ -8,7 +8,12 @@ const error = (message: string, data?: Record<string, unknown>) => {
   logger.error(message, { structuredData: true, ...data });
 };
 
+const warn = (message: string, data?: Record<string, unknown>) => {
+  logger.warn(message, { structuredData: true, ...data });
+};
+
 export default {
   info,
   error,
+  warn,
 };
