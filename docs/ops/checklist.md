@@ -7,6 +7,8 @@
 - [ ] secret: FIREBASE_SERVICE_ACCOUNT_JSON_STRING
 - [ ] vars: GCP_PROJECT_NUMBER
 - [ ] vars: TEST_ENV
+- [ ] secret: OPENAI_API_KEY
+
 
 ## GCP
 
