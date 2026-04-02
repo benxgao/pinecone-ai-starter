@@ -1,0 +1,43 @@
+# Architecture Context Loading Rules
+
+## Primary Rule
+Before starting ANY tasks related to `/docs/task_actions`, you MUST load all files from both `/docs/architecture/` and `/docs/ai_tasks` to understand:
+- Project and task purpose and goals
+- Current architecture state
+- Technical decisions and constraints
+- Component relationships
+
+## Loading Process
+1. Use `ls` to list all files in `/docs/architecture/`
+2. Use `read_file` to read each architecture file
+3. Synthesize the architecture context before proceeding
+
+## Architecture Files to Load
+- `README.md` - Project overview and purpose
+- `system-design.md` - Technical architecture
+- `api-design.md` - API specifications
+- `data-models.md` - Data structures
+- Any other `.md` files in the architecture folder
+
+## Context Application
+After loading architecture:
+- Reference specific architecture decisions when making choices
+- Ensure new code aligns with existing patterns
+- Consider architectural constraints in implementations
+- Maintain consistency with established patterns
+
+## Task Execution
+With architecture loaded:
+- Implement features that fit the current design
+- Suggest architectural changes only when explicitly requested
+- Document any deviations or additions to architecture
+- Ensure all code follows established patterns and constraints
+
+## Memory Integration
+Once Memory MCP is connected, store key architectural decisions in Memory MCP for:
+- Critical system design choices
+- Performance constraints and limits
+- Integration patterns and APIs
+- Error handling strategies
+
+This ensures architectural consistency across distributed chat sessions while maintaining the minimal RAG MVP focus.
