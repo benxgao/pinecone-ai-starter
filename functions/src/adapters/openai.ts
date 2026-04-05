@@ -1,6 +1,55 @@
-import { getOpenAIClient } from '../services/openai';
+import OpenAI from 'openai';
+import { appConfig } from '../config';
 import logger from '../services/firebase/logger';
 import { EmbeddingError } from '../types/errors';
+
+/**
+ * Singleton OpenAI client
+ *
+ * Why singleton?
+ * - Connection pooling: Reuses HTTP connections
+ * - Rate limit awareness: Single point for tracking limits
+ * - Cost tracking: Centralized token counting
+ * - Thread-safe: One client per process
+ */
+let client: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!client) {
+    const apiKey = appConfig.openai.apiKey;
+
+    if (!apiKey) {
+      throw new Error(
+        'OPENAI_API_KEY environment variable not set. ' +
+        'Add to .env file: OPENAI_API_KEY=sk-...'
+      );
+    }
+
+    if (!apiKey.startsWith('sk-')) {
+      throw new Error(
+        'OPENAI_API_KEY looks invalid. ' +
+        'Should start with "sk-". Check your .env file.'
+      );
+    }
+
+    client = new OpenAI({
+      apiKey,
+      timeout: 30000, // 30 second timeout
+      maxRetries: 2,  // Retry on transient failures
+    });
+
+    logger.info('✓ OpenAI client initialized');
+  }
+
+  return client;
+}
+
+/**
+ * Reset client (useful for testing)
+ */
+export function resetOpenAIClient(): void {
+  client = null;
+}
 
 /** Description: OpenAI embedding adapter | Sample: IN "hello world" -> OUT [0.1, 0.2, ...] */
 export class OpenAIAdapter {
@@ -60,19 +109,10 @@ export class OpenAIAdapter {
       dimensions: this.dimensions,
     };
   }
-
-  /** Estimate tokens in text (rough approximation) */
-  estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
-  }
-
-  /** Estimate cost of embedding request (Pricing: $0.02 per 1M input tokens) */
-  estimateCost(text: string): number {
-    const tokens = this.estimateTokens(text);
-    const costPerToken = 0.02 / 1_000_000;
-    return tokens * costPerToken;
-  }
 }
 
 // Export singleton instance
 export const openAIAdapter = new OpenAIAdapter();
+
+// Export client getter for direct access if needed
+export { getOpenAIClient };

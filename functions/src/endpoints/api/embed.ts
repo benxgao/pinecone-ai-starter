@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import logger from '../../services/firebase/logger';
 import { embeddingService } from '../../services/embedding';
+import { validateEmbedRequest } from '../../utils/validation';
 
 /**
  * Create semantic vector embedding from text
@@ -13,57 +14,44 @@ export const embedHandler = async (req: Request, res: Response): Promise<void> =
   const startTime = Date.now();
 
   try {
-    const { text } = req.body;
-
-    // Validation
-    if (!text) {
-      res.status(400).json({
-        error: 'text field required in request body',
-      });
-      return;
-    }
-
-    if (typeof text !== 'string') {
-      res.status(400).json({
-        error: 'text must be a string',
-      });
-      return;
-    }
-
-    if (text.length > 100000) {
-      res.status(400).json({
-        error: 'text exceeds 100,000 character limit',
-      });
-      return;
-    }
+    // Validate request using schema
+    const { text } = validateEmbedRequest(req.body);
 
     logger.info('Embed request received', {
       textLength: text.length,
       textPreview: text.substring(0, 50)
     });
 
-    // Create embedding
-    const embedding = await embeddingService.createEmbedding(text);
+    // Create embedding with metrics
+    const { embedding, tokens, cost } = await embeddingService.createEmbeddingWithMetrics(text);
     const modelInfo = embeddingService.getModelInfo();
     const duration = Date.now() - startTime;
-
-    // Estimate token count and cost
-    const tokenCount = Math.ceil(text.length / 4); // Rough: 1 token ≈ 4 characters
-    const estimatedCost = (tokenCount / 1_000_000) * 0.02; // $0.02 per 1M tokens
 
     res.json({
       embedding,
       dimensions: embedding.length,
-      tokenCount,
-      estimatedCost,
+      tokenCount: tokens,
+      estimatedCost: cost,
       model: modelInfo.model,
       duration,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     logger.error(`Error in embedHandler: ${error}`);
+
+    // Handle validation errors (Zod)
+    if (error.name === 'ZodError') {
+      res.status(400).json({
+        error: 'Invalid request',
+        details: error.errors,
+      });
+      return;
+    }
+
+    // Handle other errors
     res.status(500).json({
-      error: (error as any).message || 'Internal server error'
+      error: error.message || 'Internal server error'
     });
   }
 };
+
