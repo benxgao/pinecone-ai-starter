@@ -25,6 +25,24 @@ After completing this task, you'll understand:
 
 ---
 
+## Key Knowledge
+
+### 6.1 Chunk Size Trade-offs
+- **Small (128 tokens)** — High precision, many chunks, high cost
+- **Medium (512 tokens)** — Balanced, sweet spot for most cases
+- **Large (2048 tokens)** — Fewer chunks, risk of noise, cheaper
+
+### 6.2 Overlap Strategy
+Sliding window with 50-100 token overlap. Without overlap, sentence boundaries break relevance. With overlap, same concept appears in multiple chunks → higher recall.
+
+### 6.3 Semantic Chunking
+Split on topic boundaries, not arbitrary token count. Requires embedding each potential chunk boundary (expensive) but dramatically improves retrieval quality for long documents.
+
+### 6.4 Token Counting
+Estimate tokens: length ÷ 4 (English average). For accuracy, use `tiktoken` library. Cost example: 10K docs × 512 tokens ÷ 4 = 5M characters, embedding cost ~$0.50.
+
+---
+
 ## Requirements
 
 **Input:**

@@ -23,6 +23,25 @@ After completing this task, you'll understand:
 
 ---
 
+## Key Knowledge
+
+### 7.1 Evaluation Metrics Hierarchy
+**Precision@K** — False positives cost hallucination. **Recall@K** — Missing relevant docs cost incomplete answers. **MRR** — Rank of first relevant result. **NDCG** — Weighted ranking quality (top results count more).
+
+### 7.2 Ground Truth Creation
+Manually label 5-10 test queries with relevant documents. "Relevance" is binary (relevant/not relevant) or graded (1-3 scale). Consistency: same person labels, or use inter-rater agreement scoring.
+
+### 7.3 Metric Thresholds for Production
+- **Precision@3 > 70%** — Most results useful
+- **Recall@5 > 80%** — Finding most relevant docs
+- **MRR > 0.5** — First result often correct
+- **NDCG > 0.6** — Overall ranking quality
+
+### 7.4 Failure Diagnosis
+If Precision@3 is low: query expansion needed. If Recall@5 is low: chunking too aggressive. If MRR is low: ranking needs reranking. Use metrics to guide optimization direction.
+
+---
+
 ## Requirements
 
 **Create evaluation dataset:**

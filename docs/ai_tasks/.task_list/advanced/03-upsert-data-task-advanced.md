@@ -27,6 +27,22 @@ After completing this task, you'll understand:
 
 ---
 
+## Key Knowledge
+
+### 3.1 Batch Processing Strategy
+Load → Embed → Group → Upsert → Verify. Batching reduces API calls and memory usage by 10x compared to one-by-one processing.
+
+### 3.2 Deduplication Hash
+Create hash of document ID + content: `hash = MD5(id + text)`. Check before insert to avoid duplicate vectors wasting cost and storage.
+
+### 3.3 Cost Tracking
+OpenAI: $0.02 per 1M input tokens. Estimate: 1 token ≈ 4 characters. For 10K docs of 1000 chars each: 10K × 1000 ÷ 4 ÷ 1M × $0.02 = ~$0.05.
+
+### 3.4 Metadata Preservation
+Store original document ID, source, chunk number in Pinecone metadata. Without it, retrieved vectors are meaningless.
+
+---
+
 ## Requirements
 
 ### Input

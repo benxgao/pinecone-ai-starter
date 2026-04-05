@@ -24,6 +24,22 @@ After completing this task, you'll understand:
 
 ---
 
+## Key Knowledge
+
+### 5.1 Five-Stage RAG Pipeline
+1. **Embed** query → 2. **Retrieve** top-K docs → 3. **Assemble** context → 4. **Prompt** construct → 5. **Generate** answer. Failure at any stage breaks the chain.
+
+### 5.2 Why Grounding Reduces Hallucination
+LLM trained to predict next token. Without docs, it generates plausible-sounding fiction. With docs in context, it learns to copy from them instead of hallucinate.
+
+### 5.3 Context Window Constraints
+GPT-3.5: 4K tokens. GPT-4: 8-128K tokens. Estimate: retrieved docs + prompt overhead + answer space. Budget carefully or truncate retrieved context.
+
+### 5.4 Prompt Engineering Impact
+Same question + same context, different prompts → 30% quality variance. Use system prompt to set persona, include explicit instructions like "Only use provided documents."
+
+---
+
 ## Requirements
 
 **Input:**

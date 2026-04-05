@@ -25,6 +25,22 @@ After completing this task, you'll understand:
 
 ---
 
+## Key Knowledge
+
+### 8.1 Query Expansion Techniques
+Generate 3-5 reformulations of same query. Example: "Machine learning" → ["ML", "AI models", "neural networks", "statistical learning"]. Search all variants, deduplicate results. Cost: 4x retrieval cost, 20-40% quality gain.
+
+### 8.2 Reranking Strategy
+Initial retrieval (fast, broad) → Rerank top-20 with expensive scorer. Use semantic reranker (e.g., cross-encoder) to re-score. Cost: 1-5% increase, quality: 15-30% improvement.
+
+### 8.3 Fusion Methods
+**Reciprocal Rank Fusion (RRF):** Combine semantic + keyword search. Score = sum(1/(rank+1)) across methods. Normalizes different scale scores into single ranking.
+
+### 8.4 Optimization Loop
+Measure → Hypothesis → Change one thing → Remeasure. Common pattern: (1) Query expansion, (2) Reranking, (3) Hybrid search, (4) Fine-tune thresholds. Each adds 5-20% improvement.
+
+---
+
 ## Requirements
 
 **Input:**

@@ -7,7 +7,7 @@ This directory contains all learning materials and architecture documentation fo
 ### `ai_tasks/` — Core Learning Curriculum
 The hands-on learning path split into two difficulty levels:
 
-#### `ai_tasks/basic/` — Fundamentals Track
+#### `ai_tasks/.task_list/basic/` — Fundamentals Track
 For developers new to RAG and vector databases. Covers core concepts with minimal setup complexity.
 - `00-project-setup-basic.md` - Environment and project initialization
 - `01-openai-embedding-basic.md` - Text-to-vector generation
@@ -19,7 +19,7 @@ For developers new to RAG and vector databases. Covers core concepts with minima
 - `07-eval-retrieval-basic.md` - Retrieval quality metrics
 - `08-improve-retrieval-basic.md` - Retrieval enhancement techniques
 
-#### `ai_tasks/advanced/` — Production Track
+#### `ai_tasks/.task_list/advanced/` — Production Track
 For developers ready for enterprise patterns, optimization, and complex scenarios.
 - `00-project-setup-task-advanced.md` - Advanced project structure
 - `01-openai-embedding-task-advanced.md` - Embedding optimization

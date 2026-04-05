@@ -14,12 +14,12 @@ reference: [Task 01](../../advanced/01-openai-embedding-task-advanced.md)
 **File:** `src/services/openai/index.ts`
 
 ```typescript
-import OpenAI from 'openai';
-import logger from '../firebase/logger';
+import OpenAI from "openai";
+import logger from "../firebase/logger";
 
 /**
  * Singleton OpenAI client
- * 
+ *
  * Why singleton?
  * - Connection pooling: Reuses HTTP connections
  * - Rate limit awareness: Single point for tracking limits
@@ -31,30 +31,30 @@ let client: OpenAI | null = null;
 export function getOpenAIClient(): OpenAI {
   if (!client) {
     const apiKey = process.env.OPENAI_API_KEY;
-    
+
     if (!apiKey) {
       throw new Error(
-        'OPENAI_API_KEY environment variable not set. ' +
-        'Add to .env file: OPENAI_API_KEY=sk-...'
+        "OPENAI_API_KEY environment variable not set. " +
+          "Add to .env file: OPENAI_API_KEY=sk-...",
       );
     }
-    
-    if (!apiKey.startsWith('sk-')) {
+
+    if (!apiKey.startsWith("sk-")) {
       throw new Error(
-        'OPENAI_API_KEY looks invalid. ' +
-        'Should start with "sk-". Check your .env file.'
+        "OPENAI_API_KEY looks invalid. " +
+          'Should start with "sk-". Check your .env file.',
       );
     }
-    
+
     client = new OpenAI({
       apiKey,
       timeout: 30000, // 30 second timeout
-      maxRetries: 2,  // Retry on transient failures
+      maxRetries: 2, // Retry on transient failures
     });
-    
-    logger.info('✓ OpenAI client initialized');
+
+    logger.info("✓ OpenAI client initialized");
   }
-  
+
   return client;
 }
 
@@ -71,13 +71,13 @@ export function resetOpenAIClient(): void {
 **File:** `src/adapters/openai.ts`
 
 ```typescript
-import { getOpenAIClient } from '../services/openai';
-import logger from '../services/firebase/logger';
-import { EmbeddingError } from '../types/errors';
+import { getOpenAIClient } from "../services/openai";
+import logger from "../services/firebase/logger";
+import { EmbeddingError } from "../types/errors";
 
 /** Description: OpenAI embedding adapter | Sample: IN "hello world" -> OUT [0.1, 0.2, ...] */
 export class OpenAIAdapter {
-  private model = 'text-embedding-3-small';
+  private model = "text-embedding-3-small";
   private dimensions = 1536;
 
   /** Creates embedding vector from text input */
@@ -85,44 +85,52 @@ export class OpenAIAdapter {
     try {
       // Validate input
       if (!text || text.trim().length === 0) {
-        throw new Error('Text input cannot be empty');
+        throw new Error("Text input cannot be empty");
       }
 
       // Rate limit protection: check text length
       if (text.length > 100000) {
-        throw new Error(`Text input too long (max 100,000 characters). Got ${text.length}`);
+        throw new Error(
+          `Text input too long (max 100,000 characters). Got ${text.length}`,
+        );
       }
 
-      logger.info('Creating embedding', { textLength: text.length, model: this.model });
+      logger.info("Creating embedding", {
+        textLength: text.length,
+        model: this.model,
+      });
 
       const response = await getOpenAIClient().embeddings.create({
         model: this.model,
         input: text.trim(),
-        encoding_format: 'float',
+        encoding_format: "float",
       });
 
       const embedding = response.data[0].embedding;
 
       if (!embedding || embedding.length === 0) {
-        throw new Error('Empty embedding returned from API');
+        throw new Error("Empty embedding returned from API");
       }
 
       if (embedding.length !== this.dimensions) {
         throw new Error(
           `Invalid embedding dimensions: ${embedding.length}. ` +
-          `Expected ${this.dimensions}.`
+            `Expected ${this.dimensions}.`,
         );
       }
 
-      logger.info('Embedding created successfully', {
+      logger.info("Embedding created successfully", {
         dimensions: embedding.length,
-        model: this.model
+        model: this.model,
       });
 
       return embedding;
     } catch (error) {
       logger.error(`Error in OpenAIAdapter.createEmbedding: ${error}`);
-      throw new EmbeddingError(`Failed to create embedding: ${(error as any).message}`, error);
+      throw new EmbeddingError(
+        `Failed to create embedding: ${(error as any).message}`,
+        error,
+      );
     }
   }
 
@@ -156,42 +164,43 @@ export const openAIAdapter = new OpenAIAdapter();
 **File:** `src/services/embedding.ts`
 
 ```typescript
-import { openAIAdapter } from '../adapters/openai';
-import logger from '../services/firebase/logger';
+import { openAIAdapter } from "../adapters/openai";
+import logger from "../services/firebase/logger";
 
 /** Description: Embedding service for text vectorization | Sample: IN "hello world" -> OUT [0.1, 0.2, ...] */
 export class EmbeddingService {
-  
   /** Creates embedding vector from text input with validation and error handling */
   async createEmbedding(text: string): Promise<number[]> {
     try {
       // Input validation
-      if (!text || typeof text !== 'string') {
-        throw new Error('Text must be a non-empty string');
+      if (!text || typeof text !== "string") {
+        throw new Error("Text must be a non-empty string");
       }
 
       const trimmedText = text.trim();
       if (trimmedText.length === 0) {
-        throw new Error('Text cannot be empty or whitespace only');
+        throw new Error("Text cannot be empty or whitespace only");
       }
 
       // Rate limit protection: enforce max length
       if (trimmedText.length > 100000) {
-        throw new Error(`Text too long (max 100,000 characters). Got ${trimmedText.length}`);
+        throw new Error(
+          `Text too long (max 100,000 characters). Got ${trimmedText.length}`,
+        );
       }
 
-      logger.info('Creating embedding', {
+      logger.info("Creating embedding", {
         textLength: trimmedText.length,
-        firstChars: trimmedText.substring(0, 50)
+        firstChars: trimmedText.substring(0, 50),
       });
 
       // Create embedding using OpenAI adapter
       const embedding = await openAIAdapter.createEmbedding(trimmedText);
 
-      logger.info('Embedding created successfully', {
+      logger.info("Embedding created successfully", {
         dimensions: embedding.length,
         textLength: trimmedText.length,
-        estimatedCost: openAIAdapter.estimateCost(trimmedText)
+        estimatedCost: openAIAdapter.estimateCost(trimmedText),
       });
 
       return embedding;
@@ -207,9 +216,7 @@ export class EmbeddingService {
   }
 
   /** Create embedding with detailed metrics (tokens, cost, duration) */
-  async createEmbeddingWithMetrics(
-    text: string
-  ): Promise<{
+  async createEmbeddingWithMetrics(text: string): Promise<{
     embedding: number[];
     tokens: number;
     cost: number;
@@ -218,41 +225,41 @@ export class EmbeddingService {
     const startTime = Date.now();
     const tokens = openAIAdapter.estimateTokens(text);
     const cost = openAIAdapter.estimateCost(text);
-    
-    logger.info('📝 Embedding text with metrics', {
+
+    logger.info("📝 Embedding text with metrics", {
       textPreview: text.substring(0, 50),
       tokens,
-      estimatedCost: cost
+      estimatedCost: cost,
     });
-    
+
     const embedding = await this.createEmbedding(text);
     const duration = Date.now() - startTime;
-    
-    logger.info('✓ Embedding created with metrics', { duration, tokens, cost });
-    
+
+    logger.info("✓ Embedding created with metrics", { duration, tokens, cost });
+
     return { embedding, tokens, cost, duration };
   }
 
   /** Batch create embeddings (processes sequentially with rate limiting) */
   async createEmbeddingsBatch(
     texts: string[],
-    delayMs: number = 100
+    delayMs: number = 100,
   ): Promise<number[][]> {
     const embeddings: number[][] = [];
-    
-    logger.info('Starting batch embedding', { count: texts.length, delayMs });
-    
+
+    logger.info("Starting batch embedding", { count: texts.length, delayMs });
+
     for (let i = 0; i < texts.length; i++) {
       const text = texts[i];
       embeddings.push(await this.createEmbedding(text));
-      
+
       // Rate limiting: space out requests
       if (i < texts.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
-    
-    logger.info('Batch embedding completed', { count: embeddings.length });
+
+    logger.info("Batch embedding completed", { count: embeddings.length });
     return embeddings;
   }
 }
@@ -266,40 +273,43 @@ export const embeddingService = new EmbeddingService();
 **File:** `src/endpoints/api/embed.ts`
 
 ```typescript
-import { Request, Response } from 'express';
-import logger from '../../services/firebase/logger';
-import { embeddingService } from '../../services/embedding';
+import { Request, Response } from "express";
+import logger from "../../services/firebase/logger";
+import { embeddingService } from "../../services/embedding";
 
 /** Sample: REQ {text: string} | RES {success: boolean, embedding: number[], dimensions: 1536, estimatedCost: number} */
-export const embedHandler = async (req: Request, res: Response): Promise<void> => {
+export const embedHandler = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { text } = req.body;
 
     // Validation
     if (!text) {
       res.status(400).json({
-        error: 'text field required in request body',
+        error: "text field required in request body",
       });
       return;
     }
 
-    if (typeof text !== 'string') {
+    if (typeof text !== "string") {
       res.status(400).json({
-        error: 'text must be a string',
+        error: "text must be a string",
       });
       return;
     }
 
     if (text.length > 100000) {
       res.status(400).json({
-        error: 'text exceeds 100,000 character limit',
+        error: "text exceeds 100,000 character limit",
       });
       return;
     }
 
-    logger.info('Embed request received', { 
+    logger.info("Embed request received", {
       textLength: text.length,
-      textPreview: text.substring(0, 50)
+      textPreview: text.substring(0, 50),
     });
 
     // Create embedding
@@ -314,11 +324,10 @@ export const embedHandler = async (req: Request, res: Response): Promise<void> =
       model: modelInfo.model,
       estimatedCost: (embedding.length / 4 / 1_000_000) * 0.02, // Rough estimate
     });
-
   } catch (error) {
     logger.error(`Error in embedHandler: ${error}`);
     res.status(500).json({
-      error: (error as any).message || 'Internal server error'
+      error: (error as any).message || "Internal server error",
     });
   }
 };
@@ -327,13 +336,14 @@ export const embedHandler = async (req: Request, res: Response): Promise<void> =
 **Update:** `src/endpoints/api/index.ts`
 
 Import and use the handler:
+
 ```typescript
-import { embedHandler } from './embed';
-import { Router } from 'express';
+import { embedHandler } from "./embed";
+import { Router } from "express";
 
 const router = Router();
 
-router.post('/embed', embedHandler);
+router.post("/embed", embedHandler);
 
 export default router;
 ```
@@ -341,12 +351,12 @@ export default router;
 **Update:** `src/endpoints/index.ts`
 
 Add to main router:
-```typescript
-import apiRouter from './api';
-// ...
-router.use('/api', apiRouter);
-```
 
+```typescript
+import apiRouter from "./api";
+// ...
+router.use("/api", apiRouter);
+```
 
 ## Phase 5: Test (10 min)
 
@@ -419,6 +429,7 @@ curl -X POST http://localhost:5000/api/embed \
 ```
 
 **Success criteria:**
+
 - ✅ Returns 1536-dimensional array
 - ✅ All values between -1 and 1
 - ✅ Same text → same embedding (deterministic)
@@ -427,12 +438,12 @@ curl -X POST http://localhost:5000/api/embed \
 - ✅ Response time < 500ms per request
 - ✅ Logs show embedding creation metrics
 
-
 ## Phase 6: Documentation & Advanced Features (10 min)
 
 **Update tutorial:** `docs/ai_tutorials/01-embeddings.md`
 
 Add sections:
+
 - "How OpenAI Integration Works" - Explain singleton pattern, connection pooling
 - "Error Handling Patterns" - Document validation and error transformation
 - "Rate Limiting & Cost Tracking" - Explain token estimation, cost calculation
@@ -441,20 +452,23 @@ Add sections:
 **Advanced features already implemented:**
 
 1. **Metrics Tracking** - Use `createEmbeddingWithMetrics()` to get token count, cost, and duration
+
    ```typescript
-   const { embedding, tokens, cost, duration } = 
+   const { embedding, tokens, cost, duration } =
      await embeddingService.createEmbeddingWithMetrics(text);
    ```
 
 2. **Batch Processing** - Process multiple texts with rate limiting
+
    ```typescript
    const embeddings = await embeddingService.createEmbeddingsBatch(
      ["text1", "text2", "text3"],
-     100 // 100ms delay between requests
+     100, // 100ms delay between requests
    );
    ```
 
 3. **Model Info** - Get model details
+
    ```typescript
    const { model, dimensions } = embeddingService.getModelInfo();
    // { model: 'text-embedding-3-small', dimensions: 1536 }
@@ -466,6 +480,7 @@ Add sections:
    - Error details with stack traces
 
 **Checklist:**
+
 - [ ] Verify OpenAI adapter is initialized before first request
 - [ ] Test batch embedding with 5+ texts
 - [ ] Check logs show token estimation and cost tracking

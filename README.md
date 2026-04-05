@@ -61,7 +61,7 @@ Want enterprise patterns and optimization? Go advanced.
 - Real-world patterns and gotchas
 - **Estimated time**: 10-12 hours
 
-**Choose Your Path:** Both start in `/docs/ai_tasks/` — pick `basic/` or `advanced/` based on your experience!
+**Choose Your Path:** Both start in `/docs/ai_tasks/.task_list` — pick `basic/` or `advanced/` based on your experience!
 
 ---
 

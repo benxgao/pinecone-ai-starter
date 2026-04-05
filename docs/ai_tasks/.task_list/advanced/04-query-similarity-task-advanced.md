@@ -23,6 +23,27 @@ After completing this task, you'll understand:
 
 ---
 
+## Key Knowledge
+
+### 4.1 Cosine Similarity in One Line
+Measures angle between vectors, not distance. Range: -1 (opposite) to +1 (identical). For embeddings, typically 0.5 (moderate similarity) to 0.9 (very similar).
+
+### 4.2 topK Parameter Tuning
+- **topK=1** — Risky, single wrong result fails everything
+- **topK=3-5** — Sweet spot for most use cases (speed + quality)
+- **topK=10+** — Higher cost, diminishing quality returns
+
+### 4.3 Similarity Score Interpretation
+- **0.3-0.5** — Barely relevant, often false positives
+- **0.5-0.7** — Decent relevance, use for results
+- **0.7-0.9** — High relevance, strong match
+- **0.9+** — Near-duplicate or very exact match
+
+### 4.4 Filtering Strategies
+Set minimum score threshold (e.g., 0.5) to filter low-quality results. Trade-off: higher threshold → fewer results → fewer false positives.
+
+---
+
 ## Requirements
 
 **Input:**

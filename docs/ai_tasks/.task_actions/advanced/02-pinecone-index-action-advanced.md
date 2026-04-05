@@ -7,7 +7,7 @@
 **File:** `src/adapters/pinecone.ts`
 
 ```ts
-import { Pinecone } from '@pinecone-database/pinecone';
+import { Pinecone } from "@pinecone-database/pinecone";
 
 let client: Pinecone | null = null;
 
@@ -15,17 +15,20 @@ export function getPineconeClient(): Pinecone {
   if (client) return client;
 
   const key = process.env.PINECONE_API_KEY;
-  if (!key || key.length < 20) throw new Error('Missing/short PINECONE_API_KEY');
+  if (!key || key.length < 20)
+    throw new Error("Missing/short PINECONE_API_KEY");
 
   client = new Pinecone({
     apiKey: key,
-    environment: process.env.PINECONE_ENVIRONMENT ?? 'us-east-1-aws',
+    environment: process.env.PINECONE_ENVIRONMENT ?? "us-east-1-aws",
   });
-  console.log('✓ Pinecone client initialized');
+  console.log("✓ Pinecone client initialized");
   return client;
 }
 
-export function resetPineconeClient(): void { client = null; }
+export function resetPineconeClient(): void {
+  client = null;
+}
 ```
 
 ---
@@ -35,14 +38,14 @@ export function resetPineconeClient(): void { client = null; }
 **File:** `src/services/index.ts`
 
 ```ts
-import { Pinecone } from '@pinecone-database/pinecone';
-import { IndexDescription } from '@pinecone-database/pinecone';
-import { getPineconeClient } from '../adapters/pinecone';
+import { Pinecone } from "@pinecone-database/pinecone";
+import { IndexDescription } from "@pinecone-database/pinecone";
+import { getPineconeClient } from "../adapters/pinecone";
 
 const CFG = {
-  name: process.env.PINECONE_INDEX_NAME ?? 'rag-documents',
+  name: process.env.PINECONE_INDEX_NAME ?? "rag-documents",
   dimension: 1536,
-  metric: 'cosine' as const,
+  metric: "cosine" as const,
 };
 
 export async function getOrCreateIndex(): Promise<IndexDescription> {
@@ -51,7 +54,7 @@ export async function getOrCreateIndex(): Promise<IndexDescription> {
 
   // 1. Check if index exists
   const idxList = await pc.listIndexes();
-  const existing = idxList.indexes?.find(i => i.name === name);
+  const existing = idxList.indexes?.find((i) => i.name === name);
   if (existing) return existing;
 
   // 2. Create index if not exists
@@ -59,26 +62,28 @@ export async function getOrCreateIndex(): Promise<IndexDescription> {
     name,
     dimension: CFG.dimension,
     metric: CFG.metric,
-    spec: { serverless: { cloud: 'aws', region: 'us-east-1' } },
+    spec: { serverless: { cloud: "aws", region: "us-east-1" } },
   });
 
   // 3. Wait for index to be ready (poll 30 times with 2s intervals)
   for (let i = 0; i < 30; i++) {
-    const idx = (await pc.listIndexes()).indexes?.find(i => i.name === name);
-    if (idx?.status?.state === 'Ready') return idx;
-    await new Promise(r => setTimeout(r, 2000));
+    const idx = (await pc.listIndexes()).indexes?.find((i) => i.name === name);
+    if (idx?.status?.state === "Ready") return idx;
+    await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new Error('Index creation timeout');
+  throw new Error("Index creation timeout");
 }
 
-export async function checkIndexHealth(name = CFG.name): Promise<{healthy: boolean; totalVectors: number}> {
+export async function checkIndexHealth(
+  name = CFG.name,
+): Promise<{ healthy: boolean; totalVectors: number }> {
   const stats = await getPineconeClient().Index(name).describeIndexStats();
   return { healthy: true, totalVectors: stats.totalVectorCount ?? 0 };
 }
 
 export async function deleteIndex(name = CFG.name): Promise<void> {
-  if (process.env.CONFIRM_DELETE !== 'true')
-    throw new Error('Set CONFIRM_DELETE=true to nuke');
+  if (process.env.CONFIRM_DELETE !== "true")
+    throw new Error("Set CONFIRM_DELETE=true to nuke");
   await getPineconeClient().deleteIndex(name);
 }
 ```
@@ -90,10 +95,10 @@ export async function deleteIndex(name = CFG.name): Promise<void> {
 **File:** `src/services/index-client.ts`
 
 ```ts
-import { Pinecone } from '@pinecone-database/pinecone';
-import { getPineconeClient } from '../adapters/pinecone';
+import { Pinecone } from "@pinecone-database/pinecone";
+import { getPineconeClient } from "../adapters/pinecone";
 
-export const INDEX_NAME = process.env.PINECONE_INDEX_NAME ?? 'rag-documents';
+export const INDEX_NAME = process.env.PINECONE_INDEX_NAME ?? "rag-documents";
 
 export function getIndexClient(): Pinecone.Index<Pinecone.RecordMetadata> {
   return getPineconeClient().Index(INDEX_NAME);
@@ -109,7 +114,7 @@ export interface VectorMetadata {
 
 export interface UpsertVector {
   id: string;
-  values: number[];        // 1536-d embedding
+  values: number[]; // 1536-d embedding
   metadata?: VectorMetadata;
 }
 ```
@@ -181,11 +186,11 @@ import { getOrCreateIndex, checkIndexHealth } from "./src/services/index";
 
 ## Troubleshooting
 
-| Error | Solution |
-|-------|----------|
-| `Missing/short PINECONE_API_KEY` | Verify API key in `.env` is set and starts with `pcsk_` |
-| `UNAUTHENTICATED` | API key format invalid; get from https://app.pinecone.io |
-| `already exists` | Delete existing index or use different `PINECONE_INDEX_NAME` |
-| `Index creation timeout` | Check Pinecone console; may take longer on first creation |
-| `quota exceeded` | Free tier allows 1 index only; upgrade or delete existing |
-| `Cannot find module '@pinecone-database/pinecone'` | Run `npm install @pinecone-database/pinecone` |
+| Error                                              | Solution                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| `Missing/short PINECONE_API_KEY`                   | Verify API key in `.env` is set and starts with `pcsk_`      |
+| `UNAUTHENTICATED`                                  | API key format invalid; get from https://app.pinecone.io     |
+| `already exists`                                   | Delete existing index or use different `PINECONE_INDEX_NAME` |
+| `Index creation timeout`                           | Check Pinecone console; may take longer on first creation    |
+| `quota exceeded`                                   | Free tier allows 1 index only; upgrade or delete existing    |
+| `Cannot find module '@pinecone-database/pinecone'` | Run `npm install @pinecone-database/pinecone`                |
