@@ -4,6 +4,18 @@ import logger from '../services/firebase/logger';
 /** Description: Embedding service for text vectorization | Sample: IN "hello world" -> OUT [0.1, 0.2, ...] */
 export class EmbeddingService {
 
+  /** Estimate tokens in text (rough approximation: 1 token ≈ 4 characters) */
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  /** Estimate cost of embedding request (Pricing: $0.02 per 1M input tokens) */
+  private estimateCost(text: string): number {
+    const tokens = this.estimateTokens(text);
+    const costPerToken = 0.02 / 1_000_000;
+    return tokens * costPerToken;
+  }
+
   /** Creates embedding vector from text input with validation and error handling */
   async createEmbedding(text: string): Promise<number[]> {
     try {
@@ -33,7 +45,7 @@ export class EmbeddingService {
       logger.info('Embedding created successfully', {
         dimensions: embedding.length,
         textLength: trimmedText.length,
-        estimatedCost: openAIAdapter.estimateCost(trimmedText)
+        estimatedCost: this.estimateCost(trimmedText)
       });
 
       return embedding;
@@ -58,8 +70,8 @@ export class EmbeddingService {
     duration: number;
   }> {
     const startTime = Date.now();
-    const tokens = openAIAdapter.estimateTokens(text);
-    const cost = openAIAdapter.estimateCost(text);
+    const tokens = this.estimateTokens(text);
+    const cost = this.estimateCost(text);
 
     logger.info('📝 Embedding text with metrics', {
       textPreview: text.substring(0, 50),
