@@ -1,7 +1,7 @@
 import { getPineconeClient } from './client';
-import { appConfig } from '../../config';
+import { appConstants } from '../../config';
 
-const INDEX_NAME = appConfig.pinecone.indexName ?? 'rag-documents';
+const INDEX_NAME = appConstants.pinecone.defaultIndexName;
 
 /**
  * Get typed index client for upsert/query operations
@@ -9,8 +9,8 @@ const INDEX_NAME = appConfig.pinecone.indexName ?? 'rag-documents';
  *
  * @returns Index instance for operations
  */
-export function getIndexClient() {
-  return getPineconeClient().index(INDEX_NAME);
+export function getPineconeIndexClient() {
+  return getPineconeClient().index({ name: INDEX_NAME });
 }
 
 /**
@@ -18,6 +18,6 @@ export function getIndexClient() {
  *
  * @returns Current index name
  */
-export function getIndexName(): string {
+export function getPineconeIndexName(): string {
   return INDEX_NAME;
 }

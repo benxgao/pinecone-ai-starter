@@ -4,7 +4,7 @@ declare const process: {
 };
 
 export const appConfig = {
-  app:{
+  app: {
     auth_token: process.env.TEST_ENV,
   },
   openai: {
@@ -16,8 +16,9 @@ export const appConfig = {
     indexName: process.env.PINECONE_INDEX_NAME,
     environment: process.env.PINECONE_ENVIRONMENT,
   },
-  firebase: process.env.FIREBASE_PROJECT_ID ? {
-    projectId: process.env.FIREBASE_PROJECT_ID,
-  } : null,
+  firebase: process.env.FIREBASE_PROJECT_ID
+    ? { projectId: process.env.FIREBASE_PROJECT_ID, }
+    : null,
 };
 
+export { appConstants } from './constants';

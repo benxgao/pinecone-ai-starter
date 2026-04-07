@@ -1,6 +1,9 @@
 import { Router as createRouter } from 'express';
 import logger from '../../services/firebase/logger';
-import { getPineconeClient, checkIndexHealth } from '../../adapters/pinecone';
+import {
+  getPineconeClient,
+  checkPineconeIndexHealth,
+} from '../../adapters/pinecone';
 
 const router = createRouter();
 
@@ -15,34 +18,33 @@ router.get('/', async (_req, res): Promise<void> => {
         error: 'Missing Pinecone environment variables',
         missing: [
           !process.env.PINECONE_API_KEY && 'PINECONE_API_KEY',
-          !process.env.PINECONE_INDEX_NAME && 'PINECONE_INDEX_NAME'
-        ].filter(Boolean)
+          !process.env.PINECONE_INDEX_NAME && 'PINECONE_INDEX_NAME',
+        ].filter(Boolean),
       });
       return;
     }
 
     // Test Pinecone connection
     getPineconeClient();
-    const health = await checkIndexHealth();
+    const pineconeHealth = await checkPineconeIndexHealth(process.env.PINECONE_INDEX_NAME);
 
     logger.info('Healthcheck endpoint hit', {
-      pinecone: 'connected',
-      indexName: process.env.PINECONE_INDEX_NAME,
-      ...health
+      ...pineconeHealth,
     });
 
     res.json({
       status: 'ok',
-      pinecone: 'connected',
-      indexName: process.env.PINECONE_INDEX_NAME,
-      ...health
+      ...pineconeHealth,
     });
   } catch (error) {
     logger.error('Healthcheck failed:', { error });
     res.status(500).json({
       status: 'error',
       pinecone: 'disconnected',
-      error: error instanceof Error ? error.message : 'Failed to connect to Pinecone'
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Failed to connect to Pinecone',
     });
   }
 });

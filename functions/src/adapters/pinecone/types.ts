@@ -60,14 +60,20 @@ export interface QueryResult {
   values?: number[];
 }
 
+export enum IndexMetric {
+  'cosine' = 'cosine',
+  'euclidean' = 'euclidean',
+  'dotproduct' = 'dotproduct',
+}
+
 /**
  * Index configuration
  */
 export interface IndexConfig {
   /** Index name */
   name: string;
-  /** Vector dimension (e.g., 1536 for OpenAI) */
+  /** Vector dimension  (e.g., 1536 for OpenAI) */
   dimension: number;
   /** Distance metric: 'cosine', 'euclidean', or 'dotproduct' */
-  metric: 'cosine' | 'euclidean' | 'dotproduct';
+  metric: IndexMetric;
 }

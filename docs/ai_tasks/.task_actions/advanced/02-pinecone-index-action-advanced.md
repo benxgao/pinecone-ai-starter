@@ -48,7 +48,7 @@ const CFG = {
   metric: "cosine" as const,
 };
 
-export async function getOrCreateIndex(): Promise<IndexDescription> {
+export async function getOrCreatePineconeIndex(): Promise<IndexDescription> {
   const pc = getPineconeClient();
   const { name } = CFG;
 
@@ -81,10 +81,10 @@ export async function checkIndexHealth(
   return { healthy: true, totalVectors: stats.totalVectorCount ?? 0 };
 }
 
-export async function deleteIndex(name = CFG.name): Promise<void> {
+export async function deletePineconeIndex(name = CFG.name): Promise<void> {
   if (process.env.CONFIRM_DELETE !== "true")
     throw new Error("Set CONFIRM_DELETE=true to nuke");
-  await getPineconeClient().deleteIndex(name);
+  await getPineconeClient().deletePineconeIndex(name);
 }
 ```
 
@@ -100,7 +100,7 @@ import { getPineconeClient } from "../adapters/pinecone";
 
 export const INDEX_NAME = process.env.PINECONE_INDEX_NAME ?? "rag-documents";
 
-export function getIndexClient(): Pinecone.Index<Pinecone.RecordMetadata> {
+export function getPineconeIndexClient(): Pinecone.Index<Pinecone.RecordMetadata> {
   return getPineconeClient().Index(INDEX_NAME);
 }
 
@@ -152,9 +152,9 @@ export PINECONE_API_KEY="pcsk_..."
 export PINECONE_INDEX_NAME="test-index"
 
 npx ts-node -e '
-import { getOrCreateIndex, checkIndexHealth } from "./src/services/index";
+import { getOrCreatePineconeIndex, checkIndexHealth } from "./src/services/index";
 (async () => {
-  const idx = await getOrCreateIndex();
+  const idx = await getOrCreatePineconeIndex();
   console.log("✓", idx.name, idx.dimension, idx.metric);
   const health = await checkIndexHealth();
   console.log("✓ health", health);

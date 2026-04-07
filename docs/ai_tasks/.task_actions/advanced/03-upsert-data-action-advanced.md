@@ -91,10 +91,10 @@ npx ts-node src/commands/upsert.ts sample-docs.json
 Create verification script:
 
 ```typescript
-import { getIndexClient } from "./src/services/index-client";
+import { getPineconeIndexClient } from "./src/services/index-client";
 
 async function verify() {
-  const index = getIndexClient();
+  const index = getPineconeIndexClient();
   const stats = await index.describeIndexStats();
   console.log(`Total vectors: ${stats.totalVectorCount}`);
 }

@@ -311,7 +311,7 @@ export async function loadDocumentsFromAPI(
 
 ```typescript
 import { createEmbedding } from "./embedding";
-import { getIndexClient, UpsertVector } from "./index-client";
+import { getPineconeIndexClient, UpsertVector } from "./index-client";
 import type { Document } from "./document-loader";
 
 export interface UpsertOptions {
@@ -417,7 +417,7 @@ async function upsertBatch(
   vectors: UpsertVector[],
   batchSize: number = 100,
 ): Promise<{ upsertedCount: number; failedIds: string[] }> {
-  const index = getIndexClient();
+  const index = getPineconeIndexClient();
   let upsertedCount = 0;
   const failedIds: string[] = [];
 
@@ -646,10 +646,10 @@ Loaded 3 documents
 
 ```typescript
 // Verify upsertion worked
-import { getIndexClient } from "./src/services/index-client";
+import { getPineconeIndexClient } from "./src/services/index-client";
 
 async function verify() {
-  const index = getIndexClient();
+  const index = getPineconeIndexClient();
   const stats = await index.describeIndexStats();
 
   console.log(`Total vectors: ${stats.totalVectorCount}`);
@@ -914,7 +914,7 @@ Recommendation: Batch size = 100
   Error: Index \"rag-documents\" not found
 
 ✅ Solution:
-  1. Create index first: await getOrCreateIndex()
+  1. Create index first: await getOrCreatePineconeIndex()
   2. Check PINECONE_INDEX_NAME env var
   3. Verify in Pinecone console
 ```

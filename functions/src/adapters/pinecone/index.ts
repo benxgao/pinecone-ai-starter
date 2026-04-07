@@ -12,10 +12,13 @@
 export { getPineconeClient, resetPineconeClient } from './client';
 
 // Index lifecycle
-export { getOrCreateIndex, checkIndexHealth, deleteIndex } from './lifecycle';
+export {
+  getOrCreatePineconeIndex,
+  checkPineconeIndexHealth,
+} from './lifecycle';
 
 // Index operations
-export { getIndexClient, getIndexName } from './operations';
+export { getPineconeIndexClient, getPineconeIndexName } from './operations';
 
 // Type definitions
 export type {
@@ -23,5 +26,5 @@ export type {
   UpsertVector,
   QueryVector,
   QueryResult,
-  IndexConfig
+  IndexConfig,
 } from './types';
