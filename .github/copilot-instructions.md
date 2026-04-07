@@ -25,9 +25,11 @@
 - Layers: `services/` (biz), `adapters/` (APIs), `endpoints/` (routes).
 - Files < 600 lines, no re-rank/hybrid unless asked.
 
-## Anti-Patterns
+## STRICTLY PROHIBITED
 - No essays, no theory dupes, no unrelated refactors, no nested collections, no long docs.
 - Keep function logic simple which can be easily understood by junior developers.
+- No summary documents should be created unless directed.
+- Keep summary clean and simple if possible at the end of each chat.
 
 ## Heuristic
 Simpler > Correct > Perfect.

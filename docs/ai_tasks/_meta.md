@@ -12,6 +12,7 @@ description: AI Task Workflow
 
 ## Rules
 
+- Install popular NPM packages if needed instead of creating utilities on your own
 - One task at a time
 - Test before proceeding
 - Update tutorials when indicated
