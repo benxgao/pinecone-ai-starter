@@ -5,7 +5,7 @@ import {
   slidingWindowChunk,
   semanticChunk,
   evaluateAllStrategies,
-} from '../../services/chunking';
+} from '../../services/rag/chunking';
 import { ChunkStrategy } from '../../types/rag';
 
 

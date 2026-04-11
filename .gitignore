@@ -1,6 +1,8 @@
 .history
 .continue/mcpServers/postman.yaml
 .env
+
+coverage/
 functions/.env.yaml
 **/*/*.log
 dist

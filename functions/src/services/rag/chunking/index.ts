@@ -3,11 +3,10 @@
  * Three implementations: Fixed-size, Sliding Window, Semantic
  * Trade-offs: simplicity vs context preservation vs retrieval quality
  */
-// import * as R from 'ramda';
-import { ChunkStrategy } from '../types/rag';
 
-// Token estimation: ~4 characters per token (English average)
-const CHARS_PER_TOKEN = 4;
+import { ChunkStrategy } from '../../../types/rag';
+import { CHARS_PER_TOKEN, generateChunksInModeFixedSize, generateChunksInModeSemantic, generateChunksInModeSlidingWindow } from './getChunks';
+
 
 /**
  * Interface for chunking results with metadata
@@ -36,30 +35,7 @@ export function fixedSizeChunk(
   text: string,
   chunkSizeTokens: number = 512,
 ): ChunkedResult {
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
-  const chunks: string[] = [];
-  let currentChunk: string[] = [];
-  let charCount = 0;
-  const chunkSizeChars = chunkSizeTokens * CHARS_PER_TOKEN;
-
-  for (const word of words) {
-    const wordWithSpace = currentChunk.length === 0 ? word : ` ${word}`;
-    if (
-      charCount + wordWithSpace.length > chunkSizeChars &&
-      currentChunk.length > 0
-    ) {
-      chunks.push(currentChunk.join(' '));
-      currentChunk = [word];
-      charCount = word.length;
-    } else {
-      currentChunk.push(word);
-      charCount += wordWithSpace.length;
-    }
-  }
-
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk.join(' '));
-  }
+  const chunks = generateChunksInModeFixedSize(text, chunkSizeTokens);
 
   const totalChars = text.length;
   const estimatedTokens = Math.ceil(totalChars / CHARS_PER_TOKEN);
@@ -90,29 +66,11 @@ export function slidingWindowChunk(
   chunkSizeTokens: number = 512,
   overlapTokens: number = 100,
 ): ChunkedResult {
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
-  const chunks: string[] = [];
-  const chunkSizeChars = chunkSizeTokens * CHARS_PER_TOKEN;
-  const overlapChars = overlapTokens * CHARS_PER_TOKEN;
-  const stepChars = chunkSizeChars - overlapChars;
-
-  let position = 0;
-
-  while (position < words.length) {
-    const endPosition = Math.min(position + chunkSizeTokens * 2, words.length); // Conservative estimate
-    const chunk = words.slice(position, endPosition).join(' ');
-
-    // Check actual character size and trim if needed
-    if (chunk.length > chunkSizeChars) {
-      const trimmedChunk = chunk.substring(0, chunkSizeChars);
-      chunks.push(trimmedChunk);
-      position += Math.max(1, Math.ceil(stepChars / CHARS_PER_TOKEN));
-    } else {
-      chunks.push(chunk);
-      if (endPosition === words.length) break;
-      position += Math.max(1, Math.ceil(stepChars / CHARS_PER_TOKEN));
-    }
-  }
+  const chunks = generateChunksInModeSlidingWindow(
+    text,
+    chunkSizeTokens,
+    overlapTokens,
+  );
 
   const totalChars = text.length;
   const estimatedTokens = Math.ceil(totalChars / CHARS_PER_TOKEN);
@@ -140,25 +98,7 @@ export function slidingWindowChunk(
  * Best for: Markdown/structured documents, papers with headers
  */
 export function semanticChunk(text: string): ChunkedResult {
-  const lines = text.split('\n');
-  const chunks: string[] = [];
-  let currentChunk = '';
-
-  for (const line of lines) {
-    const isHeader = /^#+\s/.test(line.trim());
-    const isBreak = line.trim().length === 0 && currentChunk.trim().length > 50;
-
-    if ((isHeader || isBreak) && currentChunk.trim().length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = isHeader ? line : '';
-    } else {
-      currentChunk += (currentChunk ? '\n' : '') + line;
-    }
-  }
-
-  if (currentChunk.trim().length > 0) {
-    chunks.push(currentChunk.trim());
-  }
+  const chunks = generateChunksInModeSemantic(text);
 
   const totalChars = text.length;
   const estimatedTokens = Math.ceil(totalChars / CHARS_PER_TOKEN);
