@@ -41,8 +41,8 @@ export async function postChunk(req: Request, res: Response) {
       text,
       isStrategyCompare = false,
       strategy,
-      chunkSize = 512,
-      overlap = 100,
+      chunkSize = 8,
+      overlap = 2,
     } = req.body;
 
     // Validation
@@ -53,16 +53,16 @@ export async function postChunk(req: Request, res: Response) {
       });
     }
 
-    if (text.length > 1000) {
+    if (text.length > 5000) {
       return res.status(400).json({
         status: 'error',
-        message: 'text exceeds 100,000 character limit',
+        message: 'text exceeds 5000 character limit',
       });
     }
 
     const validStrategies = Object.values(ChunkStrategy);
 
-    if (!validStrategies.includes(strategy)) {
+    if (!isStrategyCompare && !validStrategies.includes(strategy)) {
       return res.status(400).json({
         status: 'error',
         message: `strategy must be one of: ${validStrategies.join(', ')}`,
@@ -77,9 +77,8 @@ export async function postChunk(req: Request, res: Response) {
 
     if (isStrategyCompare) {
       // Compare all strategies and return detailed analysis
-      const comparison = evaluateAllStrategies(
+      const comparison = await evaluateAllStrategies(
         text,
-        chunkSize,
         chunkSize,
         overlap,
       );
@@ -103,7 +102,7 @@ export async function postChunk(req: Request, res: Response) {
       } else if (strategy === ChunkStrategy.SlidingWindow) {
         result = slidingWindowChunk(text, chunkSize, overlap);
       } else if (strategy === ChunkStrategy.Semantic) {
-        result = semanticChunk(text);
+        result = await semanticChunk(text, chunkSize);
       } else {
         throw new Error(
           'You have to define a strategy or mark isStrategyCompare as true',

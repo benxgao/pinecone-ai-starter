@@ -5,8 +5,13 @@
  */
 
 import { ChunkStrategy } from '../../../types/rag';
-import { CHARS_PER_TOKEN, generateChunksInModeFixedSize, generateChunksInModeSemantic, generateChunksInModeSlidingWindow } from './getChunks';
-
+import {
+  CHARS_PER_TOKEN,
+  generateChunksInModeFixedSize,
+  // generateChunksInModeSemantic,
+  generateChunksInModeSlidingWindow,
+} from './getChunks';
+import { splitTextInModeSemantic } from './splitTextInModeSemantic';
 
 /**
  * Interface for chunking results with metadata
@@ -33,7 +38,7 @@ export interface ChunkedResult {
  */
 export function fixedSizeChunk(
   text: string,
-  chunkSizeTokens: number = 512,
+  chunkSizeTokens: number = 8,
 ): ChunkedResult {
   const chunks = generateChunksInModeFixedSize(text, chunkSizeTokens);
 
@@ -63,8 +68,8 @@ export function fixedSizeChunk(
  */
 export function slidingWindowChunk(
   text: string,
-  chunkSizeTokens: number = 512,
-  overlapTokens: number = 100,
+  chunkSizeTokens: number = 8,
+  overlapTokens: number = 2,
 ): ChunkedResult {
   const chunks = generateChunksInModeSlidingWindow(
     text,
@@ -97,8 +102,12 @@ export function slidingWindowChunk(
  *
  * Best for: Markdown/structured documents, papers with headers
  */
-export function semanticChunk(text: string): ChunkedResult {
-  const chunks = generateChunksInModeSemantic(text);
+export async function semanticChunk(
+  text: string,
+  semanticSize: number = 8,
+): Promise<ChunkedResult> {
+  // const chunks = generateChunksInModeSemantic(text);
+  const chunks = await splitTextInModeSemantic(text, semanticSize);
 
   const totalChars = text.length;
   const estimatedTokens = Math.ceil(totalChars / CHARS_PER_TOKEN);
@@ -121,15 +130,14 @@ export function semanticChunk(text: string): ChunkedResult {
  * Evaluate and compare all three strategies
  * Returns metrics for cost-quality analysis
  */
-export function evaluateAllStrategies(
+export async function evaluateAllStrategies(
   text: string,
-  fixedSize: number = 512,
-  slidingSize: number = 512,
-  slidingOverlap: number = 100,
+  chunkSize: number = 8,
+  slidingOverlap: number = 2,
 ) {
-  const fixed = fixedSizeChunk(text, fixedSize);
-  const sliding = slidingWindowChunk(text, slidingSize, slidingOverlap);
-  const semantic = semanticChunk(text);
+  const fixed = fixedSizeChunk(text, chunkSize);
+  const sliding = slidingWindowChunk(text, chunkSize, slidingOverlap);
+  const semantic = await semanticChunk(text, chunkSize);
 
   return {
     text: {
