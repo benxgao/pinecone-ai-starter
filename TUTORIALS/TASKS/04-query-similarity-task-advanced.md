@@ -1,277 +1,307 @@
 ---
-notes: Read `../_meta_.md` as instruction before take task actions
+notes: Training tutorial - focus on semantic search concepts
 ---
 
-# Task 04 — Query Similarity [advanced]
+# Tutorial 04 — Semantic Search and Similarity
 
-## Goal
+## What You'll Learn
 
-Implement semantic search by retrieving the most similar documents from Pinecone based on query text, understanding how similarity scoring enables AI-powered retrieval.
+In this tutorial, you'll understand:
 
----
-
-## Learning Outcomes
-
-After completing this task, you'll understand:
-
-- **How cosine similarity enables semantic matching** — Not keyword search, but meaning-based
-- **Retrieval pipeline mechanics** — Query embedding → vector search → ranking
-- **Similarity scoring interpretation** — 0.5 vs 0.9: what's the difference?
-- **topK parameter tuning** — When to retrieve 3, 5, or 10 results
-- **Filtering strategies** — Score thresholds, diversity scoring
-- **Real-world retrieval patterns** — Production-grade search implementations
+- **How semantic search works** — The mechanics of finding similar content
+- **Similarity scoring and interpretation** — What do scores really mean?
+- **Retrieval pipeline** — The flow from question to results
+- **Parameter tuning** — How to control search behavior
+- **Filtering and ranking** — Strategies to improve results
+- **Real-world search patterns** — How modern systems work
+- **Common pitfalls** — Why searches sometimes fail
 
 ---
 
-## Key Knowledge
+## The Core Concept: Semantic Similarity
 
-### 4.1 Cosine Similarity in One Line
-Measures angle between vectors, not distance. Range: -1 (opposite) to +1 (identical). For embeddings, typically 0.5 (moderate similarity) to 0.9 (very similar).
+### What is Semantic Similarity?
 
-### 4.2 topK Parameter Tuning
-- **topK=1** — Risky, single wrong result fails everything
-- **topK=3-5** — Sweet spot for most use cases (speed + quality)
-- **topK=10+** — Higher cost, diminishing quality returns
+Semantic similarity measures how alike two pieces of text are in meaning, not in spelling or format.
 
-### 4.3 Similarity Score Interpretation
-- **0.3-0.5** — Barely relevant, often false positives
-- **0.5-0.7** — Decent relevance, use for results
-- **0.7-0.9** — High relevance, strong match
-- **0.9+** — Near-duplicate or very exact match
+**Example:**
 
-### 4.4 Filtering Strategies
-Set minimum score threshold (e.g., 0.5) to filter low-quality results. Trade-off: higher threshold → fewer results → fewer false positives.
+- "machine learning" and "ML" are similar (different words, same meaning)
+- "machine learning" and "cars" are dissimilar (different meanings)
+- "neural networks" and "machine learning" are somewhat similar (related topics)
 
----
+The similarity is expressed as a score from 0 to 1 (sometimes -1 to 1, depending on the metric):
 
-## Requirements
+- 0 (or -1) = completely different meanings
+- 0.5 = moderately related
+- 1 = identical or near-identical meaning
 
-**Input:**
+### How Similarity is Measured
 
-- `query`: string (natural language question like "What is machine learning?")
-- `topK`: number (default: 3, how many results to return)
+Both your query and your documents are converted to embeddings (vectors). The computer then measures the angle between these vectors:
 
-**Process:**
+**Cosine Similarity**
 
-1. Embed query text using same model as documents (text-embedding-3-small)
-2. Call Pinecone `query()` with embedded vector
-3. Retrieve top-K vectors with highest similarity scores
-4. Transform results into readable format with scores
+- Treats vectors as directions in space
+- Measures the angle between them
+- Perfect match = angle of 0° = cosine value of 1
+- Perfect opposite = angle of 180° = cosine value of -1
+- Perpendicular = angle of 90° = cosine value of 0
 
-**Output:**
-
-- Array of documents sorted by relevance
-- Similarity scores (0.0-1.0 range)
-- Include original text and metadata
-- Source attribution
+This is simple, fast, and works well for semantic search.
 
 ---
 
-## Implementation
+## The Retrieval Pipeline
 
-**File:** `/src/services/retrieval.ts`
+### Step 1: Understanding the Query
 
-**Core Interface:**
+Your query "What is machine learning?" goes through these steps:
 
-```typescript
-export interface RetrievalResult {
-  id: string;
-  text: string;
-  score: number; // Similarity score: 0.0-1.0
-  metadata?: Record<string, any>;
-}
+1. **Embedding** — Convert query to a vector using the same model used for documents
+2. **Search** — Use that vector to find similar document vectors
+3. **Ranking** — Sort results by similarity score
+4. **Filtering** — Apply any quality thresholds or filters
+5. **Formatting** — Prepare results for display
 
-export async function querySimilar(
-  query: string,
-  topK: number = 3,
-): Promise<RetrievalResult[]>;
+### Step 2: The Critical Embedding Model Consistency
+
+Important: Your query and your documents must be embedded using the same model.
+
+Why? Different models have completely different vector representations. If you embedded documents with Model A but query with Model B, the similarity scores will be meaningless.
+
+### Step 3: From Similarity Scores to Results
+
+The database returns vectors with scores. Your system must:
+
+1. Look up the original document metadata
+2. Include the similarity score
+3. Sort by score (highest first)
+4. Present in a readable format
+
+---
+
+## Interpreting Similarity Scores
+
+### What Different Scores Mean
+
+| Score Range | Interpretation         | Example                                          |
+| ----------- | ---------------------- | ------------------------------------------------ |
+| 0.9 - 1.0   | Near identical meaning | "machine learning" vs "ML" or from same document |
+| 0.7 - 0.9   | Very similar           | "machine learning" vs "neural networks"          |
+| 0.5 - 0.7   | Related but distinct   | "machine learning" vs "database optimization"    |
+| 0.3 - 0.5   | Barely related         | "machine learning" vs "cooking recipes"          |
+| 0.0 - 0.3   | Very different         | Random phrases, completely unrelated             |
+
+### The Challenge: What Score is "Good Enough"?
+
+This depends on your application:
+
+**Conservative approach** — Only show results with score > 0.8
+
+- Pro: Very high quality, fewer false positives
+- Con: Might miss relevant documents
+
+**Balanced approach** — Show results with score > 0.5
+
+- Pro: Good coverage, reasonable quality
+- Con: Some less-relevant items mixed in
+
+**Liberal approach** — Show results with score > 0.3
+
+- Pro: Maximum coverage, finds remotely related documents
+- Con: Many false positives, confuses users
+
+Choose based on your user's expectations and tolerance for imprecision.
+
+---
+
+## The topK Parameter: How Many Results to Return
+
+### What is topK?
+
+The number of most-similar documents to return. Common values: 3, 5, 10.
+
+### Trade-offs
+
+**topK = 1**
+
+- Return only the single best result
+- Pro: Minimum cost and retrieval latency
+- Con: High risk (if that one is wrong, you lose)
+- Use: Only when you're very confident in your index quality
+
+**topK = 3-5** (Recommended sweet spot)
+
+- Return 3-5 best results
+- Pro: Good balance of cost, speed, and quality
+- Con: None, really—this is optimal for most cases
+- Use: Default for most applications
+
+**topK = 10+**
+
+- Return many results
+- Pro: High coverage, multiple perspectives
+- Con: More network cost, more data to process, more noise
+- Use: When retrieving for analysis or when context windows are large
+
+### The Practical Algorithm
+
+The system doesn't find top-K by checking all vectors. The vector database efficiently finds approximate top-K through its indexing structure (like HNSW from Tutorial 02). This is why it's fast even with millions of vectors.
+
+---
+
+## Filtering and Refinement Strategies
+
+### Strategy 1: Score Thresholds
+
+After retrieval, filter out results below a quality threshold:
+
 ```
+Retrieved 10 results with scores:
+0.92, 0.88, 0.85, 0.62, 0.58, 0.51, 0.48, 0.35, 0.28, 0.15
+
+With threshold 0.65:
+Keep: 0.92, 0.88, 0.85
+Discard: everything else
+Result: Only high-quality items shown
+```
+
+### Strategy 2: Diversity Filtering
+
+Sometimes you get multiple very similar results from the same document or source. Diversity filtering reduces redundancy:
+
+**Before:** Find 5 most similar results
+**After:** Find 5 most similar results, then filter out near-duplicates same source
+
+Result: More varied, useful perspectives in the search results.
+
+### Strategy 3: Recency Bias
+
+For time-sensitive information:
+
+- Prefer recent documents when scores are similar
+- Only works if you have date metadata
+- Useful for news, research, documentation
+
+### Strategy 4: Domain-Specific Ranking
+
+Combine similarity score with domain knowledge:
+
+- Factor in document authority or "trustworthiness"
+- Weight results based on source reliability
+- Combine multiple signals into a final score
+
+---
+
+## Common Retrieval Challenges
+
+### Challenge 1: Over-general Queries
+
+Query: "What is this?"
+
+Problem: Too vague to find specific information. System retrieves loosely related documents with moderate scores.
+
+Solution: Encourage more specific queries. In your UI/API docs, guide users to be more specific.
+
+### Challenge 2: Query-Document Mismatch
+
+Query uses different terminology than documents.
+
+Example:
+
+- Query: "self-driving cars"
+- Documents: "autonomous vehicles"
+- Same topic, different words → low similarity score
+
+Solution: Query expansion (covered in Tutorial 08).
+
+### Challenge 3: Irrelevant Matches
+
+Query retrieves documents that are incidentally similar but not truly relevant.
+
+Example:
+
+- Query: "machine learning"
+- Retrieved: Document on "teaching machines" (false match on "machines")
+
+Solution: This actually works better than keyword search! The semantic similarity is still usually correct. Document embeddings trained on good data generally avoid this.
 
 ---
 
 ## Implementation Guide
 
-### Step 1: Basic similarity search
+Core functions to implement for semantic search:
 
 ```typescript
-// src/services/retrieval.ts
-import { getIndex } from "../adapters/pinecone";
-import { createEmbedding } from "./embedding";
-
-export interface RetrievalResult {
+// Core data types
+interface RetrievalResult {
   id: string;
   text: string;
   score: number;
   metadata?: Record<string, any>;
 }
 
-/**
- * Query similar documents from Pinecone
- *
- * Process:
- * 1. Embed the query (create vector representation)
- * 2. Search Pinecone for nearest neighbors
- * 3. Return top-K results with similarity scores
- */
-export async function querySimilar(
+// Main search function
+async function querySimilar(
   query: string,
-  topK: number = 3,
-): Promise<RetrievalResult[]> {
-  // Step 1: Create embedding for query
-  const queryEmbedding = await createEmbedding(query);
+  topK?: number,
+): Promise<RetrievalResult[]>;
 
-  // Step 2: Search Pinecone
-  const index = getIndex();
-  const searchResults = await index.query({
-    vector: queryEmbedding,
-    topK,
-    includeMetadata: true,
-  });
-
-  // Step 3: Transform results
-  return searchResults.matches.map((match) => ({
-    id: match.id,
-    text: (match.metadata?.text as string) || "",
-    score: match.score || 0,
-    metadata: match.metadata,
-  }));
-}
+// Utility functions
+function getSimilarityLabel(score: number): string;
+function formatResults(results: RetrievalResult[]): string;
+async function querySimilarFiltered(
+  query: string,
+  topK?: number,
+  minScore?: number,
+): Promise<RetrievalResult[]>;
 ```
 
-### Step 2: Add utility functions for interpretation
+**Implementation steps:**
+
+1. **Embed the query** - Convert user query to vector using same model as documents
+2. **Search Pinecone** - Find nearest neighbors using topK parameter
+3. **Transform results** - Extract text, score, and metadata for display
+4. **Format output** - Present results in readable format with similarity labels
+
+**API endpoint pattern:**
 
 ```typescript
-/**
- * Convert similarity score to human-readable label
- * Guide interpretation of numeric scores
- */
-export function getSimilarityLabel(score: number): string {
-  if (score >= 0.9) return "🟢 Perfect match";
-  if (score >= 0.8) return "🟢 Excellent match";
-  if (score >= 0.7) return "🟡 Good match";
-  if (score >= 0.6) return "🟡 Fair match";
-  if (score >= 0.5) return "🔴 Weak match";
-  return "🔴 Poor match";
-}
+// POST /api/search
+// Request: { "query": "What is machine learning?", "topK": 3 }
+// Response:
+// {
+//   "query": "...",
+//   "topK": 3,
+//   "results": [
+//     { "id": "doc-1", "text": "...", "score": 0.92 },
+//     ...
+//   ]
+// }
 
-/**
- * Format results for display
- */
-export function formatResults(results: RetrievalResult[]): string {
-  return results
-    .map(
-      (r, i) =>
-        `${i + 1}. [${getSimilarityLabel(r.score)}] ${r.text.substring(0, 100)}...\n   Score: ${r.score.toFixed(3)}`,
-    )
-    .join("\n\n");
-}
-
-/**
- * Filter results by minimum score threshold
- * Useful for strict quality requirements
- */
-export async function querySimilarFiltered(
-  query: string,
-  topK: number = 3,
-  minScore: number = 0.7,
-): Promise<RetrievalResult[]> {
-  const results = await querySimilar(query, topK * 2); // Over-fetch to account for filtering
-  return results.filter((r) => r.score >= minScore).slice(0, topK);
-}
+router.post("/", async (req: Request, res: Response): Promise<void>
 ```
 
-### Step 3: Create API endpoint
+**Key steps:**
 
-```typescript
-// src/endpoints/api/search.ts
-import { Router, Request, Response } from "express";
-import { querySimilar, formatResults } from "../../services/retrieval";
+- Validate query input
+- Call `querySimilar()` with topK parameter
+- Return formatted results with similarity scores
 
-const router = Router();
+### Testing Your Implementation
 
-/**
- * POST /api/search
- *
- * Request body:
- * {
- *   "query": "What is machine learning?",
- *   "topK": 3
- * }
- *
- * Response:
- * {
- *   "query": "What is machine learning?",
- *   "topK": 3,
- *   "results": [
- *     {
- *       "id": "doc-1",
- *       "text": "Machine learning is...",
- *       "score": 0.92
- *     }
- *   ]
- * }
- */
-router.post("/", async (req: Request, res: Response) => {
-  const { query, topK = 3 } = req.body;
+Test these queries to verify semantic understanding works:
 
-  // Validate input
-  if (!query) {
-    return res.status(400).json({ error: "query required" });
-  }
+1. **Semantic similarity** - Query: "AI learns from examples" → Should find "machine learning" docs
+2. **Related concepts** - Query: "embeddings and vectors" → Should retrieve relevant content
+3. **Unrelated queries** - Query: "cooking recipes" → All scores should be <0.5
 
-  if (typeof topK !== "number" || topK < 1 || topK > 100) {
-    return res.status(400).json({ error: "topK must be 1-100" });
-  }
+**Success criteria:**
 
-  try {
-    const results = await querySimilar(query, topK);
-    return res.json({
-      query,
-      topK,
-      resultCount: results.length,
-      results,
-    });
-  } catch (error) {
-    console.error("Search error:", error);
-    return res.status(500).json({
-      error: error instanceof Error ? error.message : "Search failed",
-    });
-  }
-});
-
-export default router;
-```
-
----
-
-## Testing
-
-### Test 1: Basic functionality
-
-```bash
-# Start dev server
-npm run dev
-
-# In another terminal, test search
-curl -X POST http://localhost:5000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is machine learning?", "topK": 3}'
-
-# Expected response:
-# {
-#   "query": "What is machine learning?",
-#   "topK": 3,
-#   "resultCount": 3,
-#   "results": [
-#     {
-#       "id": "doc-1",
-#       "text": "Machine learning is a subset...",
-#       "score": 0.9247
-#     },
-#     ...
-#   ]
 # }
-```
+
+````
 
 ### Test 2: Various queries to understand semantics
 
@@ -290,174 +320,106 @@ curl -X POST http://localhost:5000/api/search \
 curl -X POST http://localhost:5000/api/search \
   -d '{"query": "cooking recipes", "topK": 3}'
 # All scores should be <0.5
-```
+````
 
 ### Success Criteria
 
-- ✅ Query is embedded without errors
-- ✅ Results returned with scores
-- ✅ Scores in range 0.0-1.0
-- ✅ Results sorted by score (highest first)
-- ✅ Response time <1 second
-- ✅ Related queries return semantically similar results
+- Results returned with scores in 0.0-1.0 range
+- Results sorted by score (highest first)
+- Response time <1 second
+- Semantically similar content ranks higher
 
 ---
 
-## Cosine Similarity Explained
+## Cosine Similarity: How It Works
 
-### The Math (Simple Version)
+**Simple explanation:** Cosine similarity measures the angle between two vectors.
 
-```
-Similarity = (A · B) / (||A|| × ||B||)
+- 1.0 = identical direction (perfect match)
+- 0.5 = moderate similarity (somewhat related)
+- 0.0 = perpendicular (no relation)
 
-Where:
-- A = query embedding vector
-- B = document embedding vector
-- · = dot product (sum of element-wise products)
-- ||A|| = magnitude/length of vector A
+**Why use cosine?** For text embeddings, direction matters more than magnitude. Two documents with the same meaning have vectors pointing in the same direction, even if they differ in length or scale.
 
-Result range: -1.0 to 1.0
-- 1.0  = identical vectors (perfect match)
-- 0.0  = perpendicular vectors (no relation)
-- -1.0 = opposite vectors (contradiction)
-```
-
-### Visual Example
+**Example:**
 
 ```
-Query: "machine learning"
-  ↓ (embed)
-[0.1, -0.2, 0.3, ...] (1536 dimensions)
-
-Compare with:
-Doc A: "ML is teaching computers"
-  [0.09, -0.21, 0.31, ...] → Cosine: 0.95 ✅ (similar angle)
-
-Doc B: "cooking recipes"
-  [-0.4, 0.8, -0.2, ...] → Cosine: 0.12 ❌ (very different angle)
-
-Doc C: "deep learning frameworks"
-  [0.08, -0.19, 0.29, ...] → Cosine: 0.82 ✅ (similar angle)
+Query: "machine learning" → [0.1, -0.2, 0.3, ...]
+Doc A: "ML is teaching computers" → [0.09, -0.21, 0.31, ...] = 0.95 similarity ✅
+Doc B: "cooking recipes" → [-0.4, 0.8, -0.2, ...] = 0.12 similarity ❌
 ```
-
-### Why Cosine, Not Euclidean Distance?
-
-| Metric                 | What it measures       | Best for        | Range |
-| ---------------------- | ---------------------- | --------------- | ----- |
-| **Cosine similarity**  | Angle between vectors  | Text embeddings | 0-1   |
-| **Euclidean distance** | Straight-line distance | Spatial data    | 0-∞   |
-
-**For embeddings:** Cosine is better because:
-
-- Normalized embeddings have length 1
-- Only direction matters, not magnitude
-- Gives 0-1 range (easier interpretation)
-- More efficient computation
 
 ---
 
-## topK Parameter Tuning
+## topK Parameter: How Many Results to Return
 
-### What topK means
+**What it means:**
 
-```
-topK = 3 means: "Give me the 3 most similar documents"
+- topK=1 → Return only the 1 best match
+- topK=3 → Return top 3 (recommended default)
+- topK=10 → Return top 10
 
-topK = 1  → Only best match (strict, fastest)
-topK = 3  → Top 3 (balanced, recommended default)
-topK = 10 → Top 10 (comprehensive, slower)
-```
+**Guidance by use case:**
 
-### Guidance by use case
+| Use case     | topK | Reason                      |
+| ------------ | ---- | --------------------------- |
+| Quick answer | 1-2  | Speed and high confidence   |
+| Q&A system   | 3-5  | Balance context + precision |
+| Analysis     | 5-10 | Multiple perspectives       |
 
-| Use case                | topK | Why                                 |
-| ----------------------- | ---- | ----------------------------------- |
-| Quick answer            | 1-2  | Speed, highest confidence           |
-| Q&A system              | 3-5  | Good balance of context + precision |
-| Research                | 5-10 | Multiple perspectives               |
-| Keyword search fallback | 10+  | Recovery mode                       |
+**How to choose:**
 
-### Real-world impact
-
-```
-Query: "What is RAG?"
-
-topK=1: Returns best match only
-- Answer: One paragraph explanation
-- Risk: Misses important context
-
-topK=3: Returns best 3
-- Answer: Comprehensive from multiple angles
-- Balance: Good context + focused
-
-topK=10: Returns many results
-- Answer: Very thorough
-- Risk: Too much information, harder to synthesize
-```
-
-### How to choose:
-
-1. **Start with topK=3** (industry standard)
-2. **If answers lack context** → increase to 5
-3. **If answers seem noisy** → decrease to 2
-4. **Use evaluation metrics** (Task 07) to measure impact
+1. Start with topK=3 (industry standard)
+2. If lack context → increase to 5
+3. If results seem noisy → decrease to 2
+4. Use evaluation metrics (Tutorial 07) to measure impact
 
 ---
 
-## Score Interpretation
+## Using Similarity Scores
 
-### What different scores mean
+**Score interpretation:**
 
-```
-Score 0.95+  "Perfect/Near-perfect match"
-             Query: "machine learning"
-             Result: "Machine learning definition"
-             → Use for factual lookups
+| Score     | Meaning                    | Example                                        |
+| --------- | -------------------------- | ---------------------------------------------- |
+| 0.95-1.0  | Perfect/near-perfect match | Query & result share identical concepts        |
+| 0.85-0.95 | Excellent match            | Query asks about ML, result explains it        |
+| 0.70-0.85 | Good match                 | Query "AI techniques", result covers ML subset |
+| 0.50-0.70 | Related but not strongly   | Query "learning", result "statistical methods" |
 
-Score 0.85-0.95  "Excellent match"
-                 Query: "How do computers learn?"
-                 Result: "Machine learning explanation"
-                 → High confidence, good relevance
-
-Score 0.70-0.85  "Good match"
-                 Query: "AI techniques"
-                 Result: "Machine learning overview"
                  → Relevant but not exact, usually useful
 
-Score 0.60-0.70  "Fair match"
-                 Query: "neural networks"
-                 Result: "Machine learning basics"
-                 → Related but not precisely matching
-                 → Include with caution
+Score 0.60-0.70 "Fair match"
+Query: "neural networks"
+Result: "Machine learning basics"
+→ Related but not precisely matching
+→ Include with caution
 
-Score <0.60      "Weak/Poor match"
-                 Query: "cooking recipes"
-                 Result: "Machine learning"
-                 → Usually not relevant, filter out
-```
+Score <0.60 "Weak/Poor match"
+Query: "cooking recipes"
+Result: "Machine learning"
+→ Usually not relevant, filter out
+
+````
 
 ### Using scores in practice
 
+**Quality filtering techniques:**
+
 ```typescript
-// Strict quality filter
-const results = await querySimilar(query, topK);
+// Strict quality: keep only top-tier results (>0.85)
 const highQuality = results.filter((r) => r.score > 0.85);
 
-// Confidence-based answers
-if (results[0].score > 0.9) {
-  return `High confidence: ${answer}`;
-} else if (results[0].score > 0.75) {
-  return `Moderate confidence: ${answer}`;
-} else {
-  return `Low confidence, see sources`;
-}
+// Confidence classification based on top result
+if (topScore > 0.9) confidence = "high";
+else if (topScore > 0.75) confidence = "medium";
+else confidence = "low";
 
-// Relevance-based filtering
-const relevantResults = results.filter((r) => r.score > minScore);
-if (relevantResults.length === 0) {
-  return "No sufficiently relevant results found";
-}
-```
+// Relevance threshold: discard below minimum
+const relevant = results.filter((r) => r.score > minScore);
+````
+
+This pattern is used in all three search strategies (confidence, threshold filtering, diversity).
 
 ---
 
@@ -466,62 +428,36 @@ if (relevantResults.length === 0) {
 ### Pattern 1: Score-based confidence
 
 ```typescript
-export async function searchWithConfidence(query: string, topK: number = 3) {
-  const results = await querySimilar(query, topK);
-
-  if (results.length === 0) {
-    return { confidence: "none", results: [] };
-  }
-
-  const topScore = results[0].score;
-  let confidence = "low";
-
-  if (topScore >= 0.9) confidence = "high";
-  else if (topScore >= 0.75) confidence = "medium";
-
-  return { confidence, results };
-}
+export async function searchWithConfidence(
+  query: string,
+  topK?: number,
+): Promise<{ confidence: string; results: RetrievalResult[] }>;
 ```
+
+**Logic:** Map top result's score to confidence level (low/medium/high)
 
 ### Pattern 2: Threshold filtering
 
 ```typescript
 export async function searchMinimumQuality(
   query: string,
-  minScore: number = 0.75,
-  maxResults: number = 3,
-) {
-  // Fetch more to compensate for filtering
-  const candidates = await querySimilar(query, maxResults * 3);
-
-  // Keep only high-quality results
-  return candidates.filter((r) => r.score >= minScore).slice(0, maxResults);
-}
+  minScore?: number,
+  maxResults?: number,
+): Promise<RetrievalResult[]>;
 ```
+
+**Logic:** Fetch candidates, filter by minimum score, return top N results
 
 ### Pattern 3: Result diversity
 
 ```typescript
-// Avoid returning very similar documents
-export async function searchDiverse(query: string, topK: number = 3) {
-  const results = await querySimilar(query, topK * 2);
-  const selected: RetrievalResult[] = [];
-
-  for (const result of results) {
-    // Check if too similar to already selected
-    const tooSimilar = selected.some((r) =>
-      areSimilar(result.text, r.text, 0.95),
-    );
-
-    if (!tooSimilar) {
-      selected.push(result);
-      if (selected.length === topK) break;
-    }
-  }
-
-  return selected;
-}
+export async function searchDiverse(
+  query: string,
+  topK?: number,
+): Promise<RetrievalResult[]>;
 ```
+
+**Logic:** Retrieve 2x candidates, filter duplicates, return diverse top-K results
 
 ---
 
@@ -542,19 +478,23 @@ export async function searchDiverse(query: string, topK: number = 3) {
 
 ### Latency optimization
 
-```typescript
-// Parallel embedding + search (doesn't help, serialized)
-// Instead: Reduce topK for faster response
-// topK=1 ~100ms faster than topK=10
-```
+**Key lever:** Reduce `topK` for faster responses
+
+- topK=1: ~100ms (fastest, single result)
+- topK=3: ~150ms (standard)
+- topK=10: ~200ms (most comprehensive)
+
+Parallel queries don't help since embedding must complete before search begins. Focus on reducing topK for speed-critical paths.
 
 ### Cost optimization
 
-```typescript
-// Embed query: ~$0.000001 per call
-// Search: Free (Pinecone pricing)
-// Total: Negligible cost per search
-```
+**Cost breakdown:**
+
+- Embed query: ~$0.000001 per call
+- Pinecone search: Free
+- **Total per query:** Negligible (~$0.000001)
+
+The primary cost is embedding, and it's extremely cheap for semantic search workloads.
 
 ---
 

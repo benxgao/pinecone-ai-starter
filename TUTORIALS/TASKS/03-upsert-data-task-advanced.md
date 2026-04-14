@@ -1,518 +1,334 @@
 ---
-notes: Read `../_meta_.md` as instruction before take task actions
+notes: Training tutorial - focus on data preparation and loading concepts
 ---
 
-# Task 03 — Upsert Data [advanced]
+# Tutorial 03 — Preparing and Loading Data
 
-## Goal
+## What You'll Learn
 
-Load documents from various sources, embed them, and upsert vectors into Pinecone index, understanding how to populate a vector database.
+In this tutorial, you'll understand:
 
----
-
-## Learning Outcomes
-
-After completing this task, you'll understand:
-
-| Topic                           | Description                                          |
-| ------------------------------- | ---------------------------------------------------- |
-| **Data loading patterns**       | JSON, CSV, API sources with error handling           |
-| **Integration with embeddings** | Connecting Task 01 output to Pinecone                |
-| **Batch processing**            | Efficiently upsert 1000s of vectors                  |
-| **Metadata extraction**         | Preserve document context during chunking            |
-| **Progress tracking**           | Monitor upsertion with metrics                       |
-| **Error recovery**              | Handle partial failures gracefully                   |
-| **Cost estimation**             | Calculate embedding + storage costs before execution |
-| **Deduplication**               | Avoid upserting same document twice                  |
+- **Data preparation workflow** — Steps to get raw documents ready for search
+- **Batch processing principles** — Why and how to process data efficiently
+- **Metadata preservation** — Keeping context information with your data
+- **Cost estimation and tracking** — Understanding the expenses of scale
+- **Error handling and reliability** — Making data loading robust
+- **Validation and verification** — Ensuring data quality and integrity
+- **Real-world data patterns** — Working with different document sources
 
 ---
 
-## Key Knowledge
+## The Big Picture: From Documents to Searchable Vectors
 
-### 3.1 Batch Processing Strategy
-Load → Embed → Group → Upsert → Verify. Batching reduces API calls and memory usage by 10x compared to one-by-one processing.
+### The Three Components
 
-### 3.2 Deduplication Hash
-Create hash of document ID + content: `hash = MD5(id + text)`. Check before insert to avoid duplicate vectors wasting cost and storage.
+You have:
 
-### 3.3 Cost Tracking
-OpenAI: $0.02 per 1M input tokens. Estimate: 1 token ≈ 4 characters. For 10K docs of 1000 chars each: 10K × 1000 ÷ 4 ÷ 1M × $0.02 = ~$0.05.
+1. **Documents with text** — your source material (research papers, product docs, etc.)
+2. **Embedding model** — transforms text → numbers
+3. **Vector database** — stores and searches the numbers
 
-### 3.4 Metadata Preservation
-Store original document ID, source, chunk number in Pinecone metadata. Without it, retrieved vectors are meaningless.
+The challenge: Moving data from component 1 through components 2 and 3 efficiently and reliably.
 
----
-
-## Requirements
-
-### Input
-
-- Documents (JSON file, CSV, API endpoint, or plain text)
-- Each document has: `id`, `text`, optional `metadata`
-
-### Output
-
-- All documents embedded (1536-dimensional vectors)
-- All vectors upserted to Pinecone index
-- Metadata preserved for retrieval context
-
-### Process
-
-1. Load documents from source
-2. Validate document structure
-3. Split documents into chunks (if needed)
-4. Embed each chunk using OpenAI API
-5. Create Pinecone vector with metadata
-6. Batch upsert to index
-7. Verify in Pinecone
-8. Report metrics (time, cost, count)
-
----
-
-## Why Data Upsertion Matters
-
-### The Problem: Bridging Documents to Vectors
-
-You have three components:
-
-- **Documents with meaning** (natural language)
-- **Vector database** (stores numbers)
-- **Embedding model** (converts text → numbers)
-
-**Challenge:** Reliably move documents → vectors → database
-
-#### Traditional Approach (Naive)
+### The Basic Flow
 
 ```
-1. Load all documents into memory
-2. Convert each to embedding (one at a time)
-3. Insert one by one to database
-4. Hope nothing fails
+Raw Documents
+    ↓
+Validation & Cleaning
+    ↓
+Chunking (if needed)
+    ↓
+Vectorization (embedding)
+    ↓
+Batching & Optimization
+    ↓
+Storage & Indexing
 ```
-
-**Common Failures:**
-| Issue | Consequence |
-|-------|-------------|
-| API rate limits (429 error) | Process stops halfway |
-| Memory overflow (10K docs) | Application crashes |
-| Network timeout | Lose all progress |
-| Metadata missing | Can't trace results |
-| Cost explodes | $100+ for large datasets |
-
-> **Result:** Fragile, expensive, slow
-
-### The Solution: Robust Batch Upsertion
-
-```
-1. Load documents in batches
-2. Embed in parallel with rate limiting
-3. Group into batches for Pinecone
-4. Upsert with deduplication
-5. Track progress → Resume from last batch
-6. Verify completeness
-7. Report costs and metrics
-```
-
-**Benefits:**
-
-- ✅ Handles 100K+ documents
-- ✅ Resume from failures (checkpoint)
-- ✅ Cost tracking (estimate before running)
-- ✅ Progress visibility
-- ✅ Metadata preserved
 
 ---
 
-## Implementation
+## Step 1: Data Collection and Preparation
 
-| Aspect            | Details                               |
-| ----------------- | ------------------------------------- |
-| **File**          | `/src/services/upsert.ts`             |
-| **Core Function** | `upsertDocuments(documents, options)` |
+### Where Does Data Come From?
+
+- **Files:** JSON, CSV, plain text, PDFs
+- **Databases:** SQL queries, document stores
+- **APIs:** Real-time data feeds, web services
+- **Hybrid:** Mix of sources
+
+### Data Validation
+
+Before processing, validate your data:
+
+**Completeness**
+
+- Does each document have required fields (title, content, etc.)?
+- Are there any missing or null values?
+
+**Format Consistency**
+
+- Are all documents in the expected structure?
+- Can you parse them correctly?
+
+**Content Quality**
+
+- Is the text readable and valid?
+- Are there encoding issues or corrupted characters?
+
+Why this matters: Processing invalid data wastes money on embeddings and produces poor search results.
+
+---
+
+## Step 2: Understanding Deduplication
+
+### The Problem
+
+In real-world data:
+
+- Documents sometimes appear multiple times
+- Same content from different sources
+- Slightly different versions of the same document
+
+### The Solution
+
+Before embedding, check if you've already processed this document:
+
+1. Create a unique identifier for each document (could be based on content, filename, URL, etc.)
+2. Track which documents you've already embedded
+3. Skip already-processed documents
+4. Only embed new ones
+
+This saves money and prevents index bloat.
+
+### Cost Impact
+
+Suppose you have 10,000 documents:
+
+- Without deduplication: Embed all 10,000
+- After deduplication: Maybe only embed 9,200 (800 were duplicates)
+- Savings: 8% of embedding costs
+
+For large datasets, these savings compound.
+
+---
+
+## Step 3: Batch Processing for Efficiency
+
+### Why Batch Processing Matters
+
+**Processing one document at a time:**
+
+- Embed one document
+- Send to database
+- Wait for confirmation
+- Move to next document
+
+Results: Slow with many network round trips.
+
+**Batch processing (better approach):**
+
+- Group 32-128 documents into a batch
+- Embed entire batch together
+- Send all to database at once
+- Move to next batch
+
+Results: Much faster, fewer network calls, better resource use.
 
 ```typescript
-export interface Document {
-  id: string;
-  text: string;
-  metadata?: Record<string, any>;
-}
-
-export async function upsertDocuments(
-  documents: Document[],
-  options?: UpsertOptions,
-): Promise<UpsertResult>;
+// Pseudocode for batch processing
+async function processBatch(documents: Document[]): Promise<void>;
+async function embedBatch(documents: Document[]): Promise<Embedding[]>;
+async function upsertBatch(vectors: Vector[]): Promise<void>;
 ```
+
+### Batch Size Trade-offs
+
+- **Small batches (8-16):** Lower memory usage, more flexible
+- **Medium batches (32-128):** Sweet spot for most scenarios
+- **Large batches (256+):** Very efficient but needs more RAM
+
+Choose based on your system's resources and latency requirements.
 
 ---
 
-## Implementation Guide
+## Step 4: Metadata Preservation
 
-### Step 1: Document Loading
+### What is Metadata?
 
-**File:** `src/services/document-loader.ts`
+Information about your data beyond the text content:
 
-```typescript
-import fs from 'fs';
-import path from 'path';
+- **Document ID** — Unique identifier for retrieval
+- **Source** — Where this document came from
+- **Chunk number** — If split into pieces, which part is this?
+- **Original URL** — Link to the source
+- **Author/Date** — Context information
+- **Category/Tags** — Classification
 
-export interface Document {
-  id: string;
-  text: string;
-  metadata?: Record<string, any>;
-}
+### Why Metadata Matters
 
-/**
- * Load documents from JSON file
- *
- * File format:
- * [
- *   {
- *     "id": "doc-1",
- *     "text": "Document content here...",
- *     "metadata": { "source": "manual", "tags": ["ai"] }
- *   },
- *   ...
- * ]
- */
-export async function loadDocumentsFromJSON(
-  filePath: string
-): Promise<Document[]> {
-  try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(content);
+When your system finds a relevant vector and returns it to the user, you need metadata to:
 
-    if (!Array.isArray(parsed)) {
-      throw new Error('Root must be an array of documents');
-    }
+- Tell the user where the information came from
+- Provide links or attribution
+- Filter results (e.g., "only show results from 2024")
+- Debug why a result was retrieved
 
-    const validated: Document[] = parsed.map((doc, index) => {
-      if (!doc.id) {
-        throw new Error(`Document at index ${index} missing required 'id'`);
-      }
-
-      if (!doc.text || typeof doc.text !== 'string') {
-        throw new Error(
-          `Document ${doc.id} has invalid 'text' field (must be string)`
-        );
-      }
-
-      return {
-        id: String(doc.id),
-        text: doc.text.trim(),
-        metadata: doc.metadata || {},
-      };
-    });
-
-    return validated;
-  } catch (error) {
-    if (error instanceof Error) {
-      throw new Error(
-        `Failed to load documents from ${filePath}: ${error.message}`
-      );
-    }
-    throw error;
-  }
-}
-
-/**
- * Load documents from CSV file
- *
- * CSV format (first row is headers):
- * id,text,source
- * doc-1,"Document text here",wikipedia
- * doc-2,"Another document",article
- */
-export async function loadDocumentsFromCSV(
-  filePath: string,
-  textColumn: string = 'text'
-): Promise<Document[]> {
-  // Using simple CSV parsing (could use csv-parse library for production)
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const lines = content.split('
-  ').filter(l => l.trim());
-
-  if (lines.length < 2) {
-    throw new Error('CSV must have header row + at least 1 data row');
-  }
-
-  const headers = lines[0].split(',').map(h => h.trim());
-  const idIndex = headers.indexOf('id');
-  const textIndex = headers.indexOf(textColumn);
-
-  if (idIndex === -1 || textIndex === -1) {
-    throw new Error(
-      `CSV must have 'id' and '${textColumn}' columns. ` +
-      `Found: ${headers.join(', ')}`
-    );
-  }
-
-  const documents: Document[] = lines.slice(1).map((line, rowIndex) => {
-    const values = line.split(',');
-    const id = values[idIndex]?.trim();
-    const text = values[textIndex]?.trim();
-
-    if (!id || !text) {
-      throw new Error(
-        `Row ${rowIndex + 2} missing required 'id' or '${textColumn}'`
-      );
-    }
-
-    const metadata: Record<string, any> = {};
-    headers.forEach((header, index) => {
-      if (header !== 'id' && header !== textColumn) {
-        metadata[header] = values[index]?.trim() || null;
-      }
-    });
-
-    return { id, text, metadata };
-  });
-
-  return documents;
-}
-
-/**
- * Load documents from API endpoint
- */
-export async function loadDocumentsFromAPI(
-  url: string,
-  authToken?: string
-): Promise<Document[]> {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
-  }
-
-  const response = await fetch(url, { headers });
-
-  if (!response.ok) {
-    throw new Error(
-      `API request failed: ${response.status} ${response.statusText}`
-    );
-  }
-
-  const data = await response.json();
-
-  if (!Array.isArray(data)) {
-    throw new Error('API response must be an array of documents');
-  }
-
-  return data as Document[];
-}
-```
+Without metadata, retrieved vectors are meaningless.
 
 ---
 
-### Step 2: Embedding Integration
+## Step 5: Cost Tracking and Estimation
 
-**File:** `src/services/upsert.ts` (part 1)
+### Cost Components
 
-```typescript
-import { createEmbedding } from "./embedding";
-import { getPineconeIndexClient, UpsertVector } from "./index-client";
-import type { Document } from "./document-loader";
+**Embedding costs** — Charged per token processed
+**Storage costs** — Charged per vector stored
+**Query costs** — Charged per search operation
 
-export interface UpsertOptions {
-  batchSize?: number; // Default: 100
-  rateLimitMs?: number; // Delay between API calls
-  dryRun?: boolean; // Don't actually upsert
-  resumeFrom?: number; // Skip first N documents
-}
+### Estimation Before Processing
 
-export interface UpsertMetrics {
-  documentsLoaded: number;
-  documentsEmbedded: number;
-  vectorsUpserted: number;
-  failedCount: number;
-  totalTime: number; // milliseconds
-  embeddingCost: number; // USD
-  storageCost: number; // USD per month
-}
+Before upserting your entire dataset, estimate the cost:
 
-const DEFAULT_OPTIONS: Required<UpsertOptions> = {
-  batchSize: 100,
-  rateLimitMs: 100,
-  dryRun: false,
-  resumeFrom: 0,
-};
+1. Sample 10% of your documents
+2. Calculate average tokens per document
+3. Multiply by total documents
+4. Use pricing to estimate cost
+5. Make a decision: proceed or adjust strategy
 
-/**
- * Embed documents and prepare for Pinecone upsert
- */
-async function embedDocuments(
-  documents: Document[],
-  options: Required<UpsertOptions>,
-): Promise<{ vectors: UpsertVector[]; cost: number }> {
-  const vectors: UpsertVector[] = [];
-  let totalCost = 0;
+This prevents nasty surprises where you process 500K documents and get a huge bill.
 
-  console.log(`
-  📝 Embedding ${documents.length} documents...`);
+### Cost Optimization
 
-  for (let i = 0; i < documents.length; i++) {
-    const doc = documents[i];
+**Strategy 1: Compress Text**
 
-    // Skip if resuming
-    if (i < options.resumeFrom) continue;
+- Remove redundant content
+- Summarize long documents
+- Might reduce embedding cost by 20-30%
+- Trade-off: Might lose detail
 
-    try {
-      // Embed text
-      const embedding = await createEmbedding(doc.text);
+**Strategy 2: Use Cheaper Models**
 
-      // Track cost
-      const tokens = Math.ceil(doc.text.length / 4);
-      const cost = tokens * (0.02 / 1_000_000);
-      totalCost += cost;
+- Smaller embedding models
+- Lower cost per token
+- Trade-off: Slightly lower quality
 
-      // Create vector
-      vectors.push({
-        id: doc.id,
-        values: embedding,
-        metadata: {
-          text: doc.text.substring(0, 1000), // Limit metadata size
-          ...doc.metadata,
-        },
-      });
+**Strategy 3: Selective Embedding**
 
-      // Log progress every 10 documents
-      if ((i + 1) % 10 === 0) {
-        console.log(
-          `  [${i + 1}/${documents.length}] ` +
-            `Cost so far: $${totalCost.toFixed(6)}`,
-        );
-      }
-
-      // Rate limiting
-      if (i < documents.length - 1) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, options.rateLimitMs),
-        );
-      }
-    } catch (error) {
-      console.warn(`  ⚠️  Failed to embed ${doc.id}: ${error}`);
-      // Continue with next document
-    }
-  }
-
-  console.log(`  ✓ Embedded ${vectors.length}/${documents.length}`);
-  console.log(`  Estimated cost: $${totalCost.toFixed(6)}`);
-
-  return { vectors, cost: totalCost };
-}
-```
+- Only embed most important documents
+- Use keyword indexing for others
+- Trade-off: Reduced coverage
 
 ---
 
-### Step 3: Upsert to Pinecone
+## Error Handling and Recovery
 
-**File:** `src/services/upsert.ts` (part 2)
+### Common Failures
+
+**API Rate Limiting**
+
+- Embedding API rejects requests temporarily
+- Solution: Pause, wait, and retry
+
+**Network Timeouts**
+
+- Connection drops mid-operation
+- Solution: Checkpoint progress, resume from last successful batch
+
+**Invalid Documents**
+
+- Corrupted text, encoding issues
+- Solution: Skip invalid items, log for investigation
+
+### Recovery Patterns
+
+**Strategy 1: Checkpointing**
+
+- Save progress after each batch
+- If failure occurs, resume from checkpoint
+- Prevents re-processing completed work
+
+**Strategy 2: Idempotency**
+
+- Processing the same batch twice gives same result
+- Safe to retry without side effects
+
+**Strategy 3: Partial Success**
+
+- If 1 document out of 100 fails, still process the 99 others
+- Log failures separately
+- Don't halt entire process
+
+---
+
+## Step 6: Verification
+
+### Sanity Checks
+
+After loading data:
+
+1. **Count check** — Did all documents get loaded?
+2. **Randomness check** — Sample retrieval (search for random document) works?
+3. **Quality check** — Spot-check a few search results. Do they make sense?
+4. **Completeness check** — Did metadata get preserved correctly?
+
+### Monitoring
+
+After deployment, continuously track:
+
+- Number of indexed documents
+- Index growth over time
+- Search latency
+- Error rates
+
+---
+
+## Key Takeaways
+
+The three critical steps for data loading:
+
+1. **Load & Validate** — Read documents from source, validate structure and content
+2. **Embed & Batch** — Convert text to vectors in batches, track costs
+3. **Verify & Monitor** — Confirm all data loaded, track metrics over time
+
+Key functions to implement:
 
 ```typescript
-/**
- * Upsert vectors to Pinecone in batches
- */
-async function upsertBatch(
+// Load documents from various sources
+function loadDocumentsFromJSON(filePath: string): Promise<Document[]>;
+function loadDocumentsFromCSV(filePath: string): Promise<Document[]>;
+function loadDocumentsFromAPI(url: string): Promise<Document[]>;
+
+// Embedding and batching
+function embedDocuments(documents: Document[]): Promise<Embedding[]>;
+function upsertBatch(vectors: Vector[], batchSize?: number): Promise<void>;
+
+// Track and verify
+function verifyDocumentsLoaded(count: number): boolean;
+function calculateCosts(documentCount: number): Promise<CostEstimate>;
+```
+
+**Benefits of proper data loading:**
+
+- ✅ Handles 100K+ documents efficiently
+- ✅ Resume from failures using checkpoints
+- ✅ Cost tracking before you run
+- ✅ Progress tracking and visibility
+- ✅ Metadata preserved throughout
   vectors: UpsertVector[],
   batchSize: number = 100,
-): Promise<{ upsertedCount: number; failedIds: string[] }> {
-  const index = getPineconeIndexClient();
-  let upsertedCount = 0;
-  const failedIds: string[] = [];
+  ): Promise<{ upsertedCount: number; failedIds: string[] }>
 
-  console.log(`
-  ⬆️  Upserting ${vectors.length} vectors...`);
+/\*\*
 
-  for (let i = 0; i < vectors.length; i += batchSize) {
-    const batch = vectors.slice(i, i + batchSize);
-
-    try {
-      const result = await index.upsert(batch);
-      upsertedCount += result.length;
-
-      console.log(
-        `  [${Math.min(i + batchSize, vectors.length)}/${vectors.length}] ` +
-          `Upserted: ${result.length}`,
-      );
-    } catch (error) {
-      // Track failed vectors
-      batch.forEach((v) => failedIds.push(v.id));
-      console.warn(`  ⚠️  Batch upsert failed: ${error}`);
-    }
-  }
-
-  console.log(
-    `  ✓ Completed: ${upsertedCount} upserted, ${failedIds.length} failed`,
-  );
-
-  return { upsertedCount, failedIds };
-}
-
-/**
- * Complete upsert pipeline
- */
-export async function upsertDocuments(
+- Complete upsert pipeline
+  \*/
+  export async function upsertDocuments(
   documents: Document[],
   options: UpsertOptions = {},
-): Promise<UpsertMetrics> {
-  const opts = { ...DEFAULT_OPTIONS, ...options };
-  const startTime = Date.now();
+  ): Promise<UpsertMetrics>
 
-  console.log(`
-  🚀 Upsert Pipeline Started`);
-  console.log(`   Documents: ${documents.length}`);
-  console.log(`   Batch size: ${opts.batchSize}`);
-  console.log(`   Rate limit: ${opts.rateLimitMs}ms between embeddings`);
-
-  if (documents.length === 0) {
-    throw new Error("No documents to upsert");
-  }
-
-  // Step 1: Embed
-  const { vectors, cost: embeddingCost } = await embedDocuments(
-    documents,
-    opts,
-  );
-
-  if (vectors.length === 0) {
-    throw new Error("No vectors created (all embeddings failed)");
-  }
-
-  // Step 2: Upsert
-  const { upsertedCount, failedIds } = opts.dryRun
-    ? { upsertedCount: vectors.length, failedIds: [] }
-    : await upsertBatch(vectors, opts.batchSize);
-
-  // Step 3: Estimate storage cost (~$0.025 per 1K vectors/month)
-  const storageCost = (upsertedCount / 1000) * 0.025;
-
-  const duration = Date.now() - startTime;
-
-  console.log(`
-  ✅ Upsert Complete`);
-  console.log(`   Time: ${(duration / 1000).toFixed(1)}s`);
-  console.log(`   Documents loaded: ${documents.length}`);
-  console.log(`   Vectors upserted: ${upsertedCount}`);
-  console.log(`   Failed: ${failedIds.length}`);
-  console.log(`   Embedding cost: $${embeddingCost.toFixed(6)}`);
-  console.log(`   Storage cost/month: $${storageCost.toFixed(6)}`);
-
-  if (failedIds.length > 0) {
-    console.warn(`   Failed IDs: ${failedIds.join(", ")}`);
-  }
-
-  return {
-    documentsLoaded: documents.length,
-    documentsEmbedded: vectors.length,
-    vectorsUpserted: upsertedCount,
-    failedCount: failedIds.length,
-    totalTime: duration,
-    embeddingCost,
-    storageCost,
-  };
-}
-```
+````
 
 ---
 
@@ -525,61 +341,16 @@ import { loadDocumentsFromJSON } from '../services/document-loader';
 import { upsertDocuments } from '../services/upsert';
 
 // Usage: npx ts-node src/commands/upsert.ts <file.json>
-async function main() {
-  const filePath = process.argv[2];
+async function main(): Promise<void>
+````
 
-  if (!filePath) {
-    console.log('Usage: npx ts-node src/commands/upsert.ts <documents.json>');
-    console.log('
-    Example documents.json:');
-    console.log(
-      JSON.stringify(
-        [
-          {
-            id: 'doc-1',
-            text: 'Machine learning is a subset of AI...',
-            metadata: { source: 'wiki', topic: 'ai' },
-          },
-          {
-            id: 'doc-2',
-            text: 'Embeddings are numerical representations...',
-            metadata: { source: 'article', topic: 'embeddings' },
-          },
-        ],
-        null,
-        2
-      )
-    );
-    process.exit(1);
-  }
+**Key steps:**
 
-  try {
-    console.log(`Loading documents from ${filePath}...`);
-    const documents = await loadDocumentsFromJSON(filePath);
-    console.log(`Loaded ${documents.length} documents`);
-
-    const metrics = await upsertDocuments(documents, {
-      batchSize: 50,
-      rateLimitMs: 200, // Conservative rate for API limits
-    });
-
-    console.log('
-    📊 Final Metrics:');
-    console.log(`  Loaded:          ${metrics.documentsLoaded}`);
-    console.log(`  Embedded:        ${metrics.documentsEmbedded}`);
-    console.log(`  Upserted:        ${metrics.vectorsUpserted}`);
-    console.log(`  Failed:          ${metrics.failedCount}`);
-    console.log(`  Duration:        ${(metrics.totalTime / 1000).toFixed(1)}s`);
-    console.log(`  Embedding cost:  $${metrics.embeddingCost.toFixed(6)}`);
-    console.log(`  Monthly storage: $${metrics.storageCost.toFixed(6)}`);
-  } catch (error) {
-    console.error('Upsert failed:', error);
-    process.exit(1);
-  }
-}
-
-main();
-```
+1. Parse command-line arguments for file path
+2. Validate and load JSON documents
+3. Call `upsertDocuments()` with batch configuration
+4. Display metrics (loaded, embedded, upserted, costs)
+5. Handle and report errors
 
 ---
 
@@ -645,18 +416,9 @@ Loaded 3 documents
 ### Test 2: Verify vectors in Pinecone
 
 ```typescript
-// Verify upsertion worked
 import { getPineconeIndexClient } from "./src/services/index-client";
 
-async function verify() {
-  const index = getPineconeIndexClient();
-  const stats = await index.describeIndexStats();
-
-  console.log(`Total vectors: ${stats.totalVectorCount}`);
-  console.log(`Should include our 3 documents`);
-}
-
-verify();
+async function verify(): Promise<void>;
 ```
 
 ### Test 3: Error scenarios
@@ -785,14 +547,7 @@ Total for 1000 documents:
 export async function incrementalUpsert(
   newDocuments: Document[],
   alreadyUpsetIds: Set<string>,
-): Promise<UpsertMetrics> {
-  // Filter out already upserted
-  const toUpsert = newDocuments.filter((doc) => !alreadyUpsetIds.has(doc.id));
-
-  console.log(`Found ${toUpsert.length} new documents to upsert`);
-
-  return upsertDocuments(toUpsert);
-}
+): Promise<UpsertMetrics>;
 ```
 
 ### Pattern 2: Upsert with checkpoints (resume from failures)
@@ -801,27 +556,7 @@ export async function incrementalUpsert(
 export async function upsertWithCheckpoints(
   documents: Document[],
   checkpointFile: string,
-): Promise<UpsertMetrics> {
-  let startIndex = 0;
-
-  if (fs.existsSync(checkpointFile)) {
-    const checkpoint = JSON.parse(fs.readFileSync(checkpointFile, "utf-8"));
-    startIndex = checkpoint.lastIndex;
-    console.log(`Resuming from document ${startIndex}`);
-  }
-
-  const metrics = await upsertDocuments(documents, {
-    resumeFrom: startIndex,
-  });
-
-  // Save checkpoint
-  fs.writeFileSync(
-    checkpointFile,
-    JSON.stringify({ lastIndex: documents.length, ...metrics }),
-  );
-
-  return metrics;
-}
+): Promise<UpsertMetrics>;
 ```
 
 ---

@@ -1,197 +1,472 @@
 ---
-notes: Read `../_meta_.md` as instruction before take task actions
+notes: Training tutorial - focus on retrieval optimization techniques
 ---
 
-# Task 08 — Improve Retrieval [advanced]
+# Tutorial 08 — Advanced Retrieval Optimization
 
-## Goal
+## What You'll Learn
 
-Optimize the retrieval component of your RAG system using advanced techniques to significantly improve answer quality and reduce hallucination.
+In this tutorial, you'll understand:
 
----
-
-## Learning Outcomes
-
-After completing this task, you'll understand:
-
-- **Query expansion** — Generating multiple search queries from one question
-- **Multi-retriever fusion** — Combining results from different search methods
-- **Reranking** — Using semantic similarity to reorder results
-- **Hybrid search** — Combining semantic + keyword search
-- **A/B testing framework** — Measuring improvement systematically
-- **Iterative optimization** — Progressive refinement based on metrics
+- **Why basic retrieval needs optimization** — Limitations of simple vector search
+- **Query expansion** — Searching with multiple angles
+- **Multi-retriever fusion** — Combining different search methods
+- **Reranking strategies** — Using smarter scoring for better results
+- **Hybrid search** — Combining semantic and keyword search
+- **Filtering and ranking** — Advanced result filtering
+- **A/B testing frameworks** — Measuring improvement systematically
 - **Cost-quality trade-offs** — Speed vs accuracy decisions
-- **Production monitoring** — Tracking retrieval quality in deployment
+- **Optimization loops** — Iterative improvement methodology
+- **Production monitoring** — Tracking performance over time
 
 ---
 
-## Key Knowledge
+## The Core Problem: Basic Retrieval Has Limits
 
-### 8.1 Query Expansion Techniques
-Generate 3-5 reformulations of same query. Example: "Machine learning" → ["ML", "AI models", "neural networks", "statistical learning"]. Search all variants, deduplicate results. Cost: 4x retrieval cost, 20-40% quality gain.
+### What's Wrong with Simple Vector Search?
 
-### 8.2 Reranking Strategy
-Initial retrieval (fast, broad) → Rerank top-20 with expensive scorer. Use semantic reranker (e.g., cross-encoder) to re-score. Cost: 1-5% increase, quality: 15-30% improvement.
+Simple vector search works, but it has blind spots:
 
-### 8.3 Fusion Methods
-**Reciprocal Rank Fusion (RRF):** Combine semantic + keyword search. Score = sum(1/(rank+1)) across methods. Normalizes different scale scores into single ranking.
-
-### 8.4 Optimization Loop
-Measure → Hypothesis → Change one thing → Remeasure. Common pattern: (1) Query expansion, (2) Reranking, (3) Hybrid search, (4) Fine-tune thresholds. Each adds 5-20% improvement.
-
----
-
-## Requirements
-
-**Input:**
-
-- User question
-- Vector index (from Tasks 02-03)
-- Evaluation metrics (from Task 07)
-
-**Output:**
-
-- Improved retrieved documents (better relevance)
-- Quality metrics showing improvement
-- Cost metrics (time, tokens, API calls)
-- Recommendation for production deployment
-
-**Success criteria:**
-
-- nDCG score increases 10-20%
-- Cost increase < 20%
-- Latency < 2 seconds end-to-end
-
----
-
-## Why Retrieval Improvement Matters
-
-### The Problem: Standard Search Has Limitations
+**Problem 1: Query Phrasing**
 
 ```
-Standard vector search:
-1. User asks: "How do machines learn?"
-2. Query embedding: "how do machines learn" → [0.12, -0.34, ...]
-3. Search index: Find 3 most similar
-4. Results: Some relevant, some not
-5. Problem: Question worded differently might miss key documents
-
-Result: Answer only uses available documents, may lack key context
+Document says: "autonomous vehicles"
+User asks: "self-driving cars"
+Meaning is similar, but embeddings may not match perfectly
+Result: Document not retrieved (or ranked lower than it should be)
 ```
 
-### The Solution: Multiple Retrieval Strategies
+**Problem 2: Terminology Mismatch**
 
 ```
-Improved retrieval:
-1. User asks: "How do machines learn?"
-2. Expand query into 3 variants:
-   - "machine learning fundamentals"
-   - "how computers learn from data"
-   - "neural network training"
-3. Search with each variant
-4. Combine and rerank results
-5. Result: Gets documents from multiple angles
-
-Improvement: +15% better retrieval, same cost
+Document uses technical terms: "supervised classification"
+User uses everyday language: "how to teach a program"
+Different vocabulary, similar concepts
+Result: Missed retrieval
 ```
+
+**Problem 3: Different Document Aspects**
+
+```
+User asks: "red cars"
+Document contains:
+- Section 1: "red" (color discussion)
+- Section 2: "cars" (transportation)
+But query about cars that are red
+Result: False positive (both words present but not together)
+```
+
+**Problem 4: Context Limitations**
+
+```
+Query: "What year did X happen?"
+Document has: "X happened during the Great Depression"
+Semantic similarity is high, but doesn't answer the specific question
+Result: Retrieved but not useful
+```
+
+### The Solution: Advanced Retrieval Techniques
+
+Instead of one search pass, use multiple complementary strategies:
+
+- Search the same query multiple ways
+- Search different formulations of the query
+- Combine keyword and semantic search
+- Rerank results more carefully
 
 ---
 
 ## Technique 1: Query Expansion
 
+### What is Query Expansion?
+
+Instead of searching for the user's exact question, generate multiple variations and search for all of them.
+
+### How Query Expansion Works
+
+**Original query:** "Machine learning"
+
+**Expanded queries:** (Generate automatically)
+
+- "machine learning"
+- "ML"
+- "artificial intelligence models"
+- "neural networks"
+- "AI algorithms"
+
+**Search strategy:**
+
+1. Search for each variant
+2. Collect all results
+3. Deduplicate (same document mentioned in multiple searches)
+4. Rank by frequency (documents found in multiple searches ranked higher)
+
+### Why This Works
+
+Different documents might use different terminology. By searching multiple ways, you cast a wider net. Documents that match multiple variants are probably genuinely relevant.
+
+### Cost-Quality Trade-off
+
+**Cost:** 4-5x the retrieval cost (searching 5 variants instead of 1)
+
+**Quality improvement:** 15-30% better retrieval quality
+
+**Decision:** Usually worth it. Better quality often justifies higher cost.
+
+### Implementation Approaches
+
+**Approach 1: Hard-coded Variations**
+
+- Manually define variations for common queries
+- Fast, predictable
+- Works for known question types
+
+**Approach 2: LLM-Generated Variations**
+
+- Ask an LLM to generate variations
+- Flexible, works for any query
+- More expensive, newer approach
+
+**Approach 3: Domain-Specific Expansion**
+
+- Use domain knowledge (medical synonyms, technical glossaries)
+- Very accurate for specific domains
+- Requires domain expertise
+
+---
+
+## Technique 2: Hybrid Search
+
+### The Idea
+
+Semantic search (vector similarity) and keyword search have different strengths:
+
+| Aspect                 | Semantic Search | Keyword Search |
+| ---------------------- | --------------- | -------------- |
+| Understands meaning    | ✓               | ✗              |
+| Handles synonyms       | ✓               | ✗              |
+| Exact match capability | ✗               | ✓              |
+| Boolean queries        | ✗               | ✓              |
+| Speed                  | Moderate        | Fast           |
+
+Combine both for best of both worlds.
+
+### How Hybrid Search Works
+
+**For a query "machine learning algorithms":**
+
+**Step 1: Semantic Search**
+
+- Embed query: "machine learning algorithms" → vector
+- Find similar documents using vector database
+- Get results: [Doc A (0.87), Doc B (0.82), Doc C (0.79)]
+
+**Step 2: Keyword Search**
+
+- Search for keywords: "machine" OR "learning" OR "algorithms"
+- Get results: [Doc A (match 3 words), Doc C (match 2 words), Doc X (match 1 word)]
+
+**Step 3: Fusion**
+
+- Combine scores from both searches
+- Documents appearing in both searches ranked higher
+- Weight them (e.g., 60% semantic, 40% keyword, or 50/50)
+
+**Result:** Better coverage than either alone
+
+### When to Use Hybrid
+
+**Use hybrid when:**
+
+- You have important structured data (dates, categories)
+- Keyword precision matters (technical documentation)
+- You need boolean queries (e.g., "medical term" but NOT "historical")
+- Budget allows extra cost
+
+**Skip hybrid when:**
+
+- Data is mostly unstructured prose
+- Keyword search worse than semantic (not useful)
+- Cost is hard constraint
+- Semantic search already works well (>85% quality)
+
+---
+
+## Technique 3: Reranking
+
+### The Problem with Initial Retrieval
+
+Vector databases use fast approximate algorithms (like HNSW from Tutorial 02). These are fast but approximate:
+
+- May not return true top-K
+- Works well enough most of the time
+- But not optimal
+
+### How Reranking Works
+
+**Two-stage process:**
+
+**Stage 1: Initial Retrieval (Fast)**
+
+- Use vector database HNSW
+- Return top-20 results (broader than needed)
+- Fast, approximate
+
+**Stage 2: Reranking (Careful)**
+
+- Take top-20 from stage 1
+- Score each more carefully using more expensive model
+- Sort by new scores
+- Return top-3 from reranked results
+
+### Why This Works
+
+**Stage 1 efficiency:** HNSW finds roughly relevant documents quickly
+
+**Stage 2 precision:** Expensive scoring only applied to top-20, not millions
+
+**Result:** More accurate top results than naive approach
+
+### Reranking Models
+
+**Option 1: Semantic Reranker (Cross-Encoder)**
+
+- More sophisticated similarity model
+- Scores both query and document comprehensively
+- Slightly more expensive than vector search
+
+**Option 2: Domain-Specific Ranker**
+
+- Trained on your specific domain
+- Understands your terms and concepts
+- Most effective but requires training data
+
+**Option 3: Hybrid Ranker**
+
+- Combines semantic score + keyword match + metadata
+- Custom weighting based on your domain
+- Most flexible
+
+### Cost-Quality Trade-off
+
+**Cost:** 10-20% additional cost (careful scoring of top-20)
+
+**Quality improvement:** 15-30% better ranking
+
+**Latency:** Minimal increase (still <500ms total for most systems)
+
+**Decision:** Usually worth it. Provides major quality boost for reasonable cost.
+
+---
+
+## Technique 4: Reciprocal Rank Fusion (RRF)
+
+### The Problem It Solves
+
+When combining results from multiple retrievers (semantic + keyword, or multiple query variants), how do you fairly combine them?
+
+Different retrievers have different score scales:
+
+- Semantic similarity: 0.0-1.0
+- Keyword matching: counts or percentages
+- Different databases: different scoring
+
+Simply averaging doesn't work well.
+
+### How RRF Works
+
+Instead of averaging scores, use ranks:
+
+```
+Semantic Search Results:
+1. Doc A (score 0.95)
+2. Doc B (score 0.88)
+3. Doc C (score 0.82)
+
+Keyword Search Results:
+1. Doc C (score high)
+2. Doc A (score medium)
+4. Doc X (score low)
+
+RRF Calculation:
+Doc A: 1/(1+1) + 1/(2+1) = 1.0 + 0.33 = 1.33
+Doc B: 1/(2+1) = 0.33
+Doc C: 1/(3+1) + 1/(1+1) = 0.25 + 0.5 = 0.75
+Doc X: 1/(4+1) = 0.2
+
+Final Ranking: A > B > C > X
+```
+
+### Why RRF is Clever
+
+- Fair comparison (both retrievers have equal opportunity)
+- Normalized scale (0 to 2 for two retrievers)
+- Robust to score variation
+- Simple to understand and implement
+
+### When to Use RRF
+
+Perfect when combining:
+
+- Semantic + keyword search
+- Multiple query variants
+- Different embedding models
+- Different retrieval strategies
+
+---
+
+## The Optimization Loop
+
+### Systematic Improvement Process
+
+**Step 1: Measure Baseline**
+
+- Create evaluation test cases
+- Run simple vector search
+- Record metrics (Precision, Recall, NDCG)
+
+**Step 2: Hypothesis**
+
+- Analyze failures: What's going wrong?
+- Form hypothesis: "Query expansion would help" or "Need reranking"
+- Choose one technique to try
+
+**Step 3: Implement**
+
+- Add chosen technique
+- Keep everything else identical
+
+**Step 4: Measure**
+
+- Re-run evaluation
+- Compare metrics
+
+**Step 5: Decide**
+
+- If improved: Keep it. Proceed to next hypothesis.
+- If degraded: Remove it. Try different technique.
+
+**Step 6: Iterate**
+
+- Repeat steps 2-5 with new hypotheses
+
+### Typical Improvement Path
+
+1. **Baseline:** Precision@5 = 0.65
+2. **Add query expansion:** Precision@5 = 0.72 (+7%)
+3. **Add reranking:** Precision@5 = 0.78 (+6%)
+4. **Add hybrid search:** Precision@5 = 0.81 (+3%)
+5. **Tune thresholds:** Precision@5 = 0.82 (+1%)
+
+Each step adds 1-7% improvement. Combined effect is significant.
+
+### When to Stop Optimizing
+
+Stop when:
+
+- You reach your quality target
+- Cost increase outweighs quality gain
+- Diminishing returns (each step adds <2%)
+- Time/resources better spent elsewhere
+
+---
+
+## Production Considerations
+
+### Monitoring and Alerting
+
+After optimization, track:
+
+- Retrieval quality metrics (weekly)
+- User satisfaction (feedback, explicit ratings)
+- System cost (tokens, API calls)
+- Latency (response time)
+
+Alert if:
+
+- Metrics drop >5%
+- Cost increases >20% unexpectedly
+- Latency exceeds acceptable threshold
+
+### A/B Testing
+
+When deploying changes:
+
+1. **Control group:** Gets old system (baseline)
+2. **Treatment group:** Gets new system
+3. **Measure:** Compare metrics over time
+4. **Statistical significance:** Ensure improvement isn't random
+5. **Deploy if positive:** Roll out to all users
+
+### Continuous Improvement
+
+- Collect real user queries monthly
+- Sample and manually evaluate
+- Use as feedback for next optimization round
+- Adapt as user needs evolve
+
+---
+
+## Decision Framework
+
+### When to Use Each Technique
+
+| Technique       | Best For                         | Cost     | Complexity | Quality Gain |
+| --------------- | -------------------------------- | -------- | ---------- | ------------ |
+| Query expansion | Terminology mismatch             | 4-5x     | Low        | 15-30%       |
+| Hybrid search   | Structured data, precision needs | 1-2x     | Medium     | 10-20%       |
+| Reranking       | Highest quality needed           | 1.1-1.2x | Medium     | 15-30%       |
+| RRF             | Combining methods                | Minimal  | Low        | Varies       |
+
+### Building Your Optimization Plan
+
+1. **Start:** Evaluate baseline with 10 test queries
+2. **Identify:** Biggest failure modes
+3. **Pick:** Technique that addresses them
+4. **Implement:** See Technique 1-4
+5. **Measure:** Evaluate with same test queries
+6. **Decide:** Keep if ≥5% improvement
+7. **Repeat:** Next technique
+8. **Validate:** Cross-check with new test cases
+9. **Deploy:** Monitor in production
+
+---
+
+## Key Takeaways
+
 **Definition:** Generate multiple search queries to capture different phrasings
 
 ### Simple Expansion (Template-based)
 
-```typescript
+```ts
 // src/services/query-expansion.ts
 
-export async function expandQuery(question: string): Promise<string[]> {
-  const queries = [question]; // Original query
-
-  // Template 1: Question → Statement
-  queries.push(
-    question
-      .replace("What ", "")
-      .replace("How ", "")
-      .replace("Why ", "")
-      .replace("?", ""),
-  );
-
-  // Template 2: Add synonyms
-  const synonymMap: Record<string, string> = {
-    "machine learning": "AI algorithms",
-    "neural networks": "deep learning",
-    embeddings: "vector representations",
-    retrieval: "search",
-  };
-
-  let expanded = question;
-  for (const [key, value] of Object.entries(synonymMap)) {
-    if (question.toLowerCase().includes(key)) {
-      expanded = question.replace(new RegExp(key, "gi"), value);
-      queries.push(expanded);
-    }
-  }
-
-  // Template 3: Break into key phrases
-  const keyPhrases = question
-    .split(/[?,!]/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 5);
-  queries.push(...keyPhrases);
-
-  // Return unique queries
-  return [...new Set(queries)];
-}
-
-// Usage
-const variants = await expandQuery("How do neural networks learn from data?");
-console.log("Query variants:", variants);
-// Output:
-// [
-//   "How do neural networks learn from data?",
-//   "neural networks learn from data",
-//   "How do deep learning learn from data?",
-//   "How do neural networks learn",
-//   "from data"
-// ]
+export async function expandQuery(question: string): Promise<string[]>;
 ```
+
+**Strategy:**
+
+1. Keep original query
+2. Convert question to statement (remove "What", "How", "Why")
+3. Apply synonyms (e.g., "ML" → "machine learning")
+4. Extract key phrases
+5. Return unique set
 
 ### LLM-based Expansion (More sophisticated)
 
-```typescript
+```ts
 export async function expandQueryWithLLM(
   question: string,
   client: OpenAI,
-): Promise<string[]> {
-  const prompt = `Given this question, generate 3 alternative phrasings that would help find relevant documents:
-
-Question: "${question}"
-
-Return as JSON array of 3 strings, no explanations:
-["variant 1", "variant 2", "variant 3"]`;
-
-  const response = await client.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-    max_tokens: 100,
-  });
-
-  const content = response.choices[0].message.content || "[]";
-  const variants = JSON.parse(content);
-
-  return [question, ...variants];
-}
-
-// Usage
-const expanded = await expandQueryWithLLM(
-  "How do neural networks learn?",
-  client,
-);
-// Output: Original + 3 LLM-generated variants
+): Promise<string[]>;
 ```
+
+**Strategy:**
+
+1. Prompt LLM: "Generate 3 alternative phrasings for this question"
+2. Parse JSON response
+3. Return original + 3 LLM-generated variants
+4. More flexible than templates, works for any query type
 
 ---
 
@@ -201,74 +476,33 @@ const expanded = await expandQueryWithLLM(
 
 ### Reciprocal Rank Fusion
 
-```typescript
+```ts
 // src/services/fusion.ts
 
 export interface RetrievalResult {
   id: string;
   text: string;
-  score: number;
+  score: number; // 0-1 similarity/relevance
 }
 
 /**
  * Reciprocal Rank Fusion (RRF)
- *
- * Formula: Score = sum(1 / (k + rank))
- * where k=60 (standard value)
- *
- * Combines results from multiple retrievers
- * without needing to normalize scores
+ * Formula: Score = sum(1 / (k + rank)) where k=60
+ * Combines results from multiple retrievers without score normalization
  */
 export function reciprocalRankFusion(
   resultGroups: RetrievalResult[][],
-): RetrievalResult[] {
-  const k = 60; // Standard RRF constant
-  const scoreMap = new Map<string, number>();
-  const docMap = new Map<string, RetrievalResult>();
-
-  // For each result group (from different retrievers/queries)
-  resultGroups.forEach((results, groupIndex) => {
-    // Score each result by its rank in this group
-    results.forEach((result, rank) => {
-      const rrfScore = 1 / (k + rank + 1);
-      scoreMap.set(result.id, (scoreMap.get(result.id) || 0) + rrfScore);
-
-      // Keep first occurrence of document
-      if (!docMap.has(result.id)) {
-        docMap.set(result.id, result);
-      }
-    });
-  });
-
-  // Convert back to results, sorted by RRF score
-  const fused = Array.from(scoreMap.entries())
-    .map(([id, score]) => ({
-      ...docMap.get(id)!,
-      score, // Replace with RRF score
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  return fused;
-}
-
-// Usage
-const query1Results = await search(expandedQueries[0], index);
-const query2Results = await search(expandedQueries[1], index);
-const query3Results = await search(expandedQueries[2], index);
-
-const fusedResults = reciprocalRankFusion([
-  query1Results,
-  query2Results,
-  query3Results,
-]);
-
-console.log("Fused results (best first):");
-fusedResults.slice(0, 3).forEach((r, i) => {
-  console.log(
-    `${i + 1}. ${r.text.substring(0, 50)}... (score: ${r.score.toFixed(3)})`,
-  );
-});
+): RetrievalResult[];
 ```
+
+**Algorithm:**
+
+1. For each result group, score by rank: `1 / (k + rank)`
+2. Sum scores for documents appearing in multiple groups
+3. Sort by total RRF score
+4. Return merged results
+
+**Advantage:** Fair comparison across different retrievers and scoring scales
 
 ---
 
@@ -278,106 +512,43 @@ fusedResults.slice(0, 3).forEach((r, i) => {
 
 ### Semantic Reranking
 
-```typescript
+```ts
 // src/services/reranking.ts
 
 import { createEmbedding } from "./embedding";
 
 /**
- * Rerank documents using semantic similarity to question
- *
- * Process:
- * 1. Get question embedding
- * 2. Calculate similarity to each document
- * 3. Sort by semantic relevance
- * 4. Keep top-K
+ * Semantic reranking using cosine similarity
+ * Process: Embed question, calculate similarity to each candidate, sort by score
  */
 export async function semanticRerank(
   question: string,
   candidates: RetrievalResult[],
-  topK: number = 3,
-): Promise<RetrievalResult[]> {
-  // Get question embedding for precise ranking
-  const questionEmbedding = await createEmbedding(question);
-
-  // Calculate similarity to each candidate
-  const scored = candidates.map((candidate) => {
-    // Candidate already has embedding from search
-    const similarity = cosineSimilarity(questionEmbedding, candidate.embedding);
-
-    return {
-      ...candidate,
-      rerankedScore: similarity,
-    };
-  });
-
-  // Sort by similarity, keep top-K
-  return scored
-    .sort((a, b) => b.rerankedScore - a.rerankedScore)
-    .slice(0, topK);
-}
-
-// Helper: Cosine similarity
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dotProduct = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-  }
-
-  const magnitude = Math.sqrt(
-    a.reduce((sum, v) => sum + v * v, 0) * b.reduce((sum, v) => sum + v * v, 0),
-  );
-
-  return magnitude > 0 ? dotProduct / magnitude : 0;
-}
+  topK?: number,
+): Promise<RetrievalResult[]>;
 ```
 
 ### Cross-Encoder Reranking (More Powerful)
 
-```typescript
+```ts
 /**
- * Cross-encoder reranking
- *
- * More sophisticated: Uses a model trained on question-document pairs
- * Score ranges from 0-1 (relevance probability)
- *
- * Note: Requires separate model API (e.g., Cohere, Jina, or local)
+ * Cross-encoder reranking using external API (e.g., Cohere)
+ * Uses model trained on question-document pairs
+ * Score range: 0-1 (relevance probability)
  */
 export async function crossEncoderRerank(
   question: string,
   candidates: RetrievalResult[],
-  topK: number = 3,
-): Promise<RetrievalResult[]> {
-  // Example using Cohere API
-  const response = await fetch("https://api.cohere.ai/v1/rerank", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.COHERE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query: question,
-      documents: candidates.map((c) => c.text),
-      model: "rerank-english-v2.0",
-      top_k: topK,
-    }),
-  });
-
-  const data = await response.json();
-
-  // Map results back to original format
-  return data.results.map((result: any) => ({
-    ...candidates[result.index],
-    rerankedScore: result.relevance_score,
-  }));
-}
+  topK?: number,
+): Promise<RetrievalResult[]>;
 ```
 
-### Cohere Reranking (3rd-party library)
+**Process:**
 
-```
-// Append comments here with key features of cohere reranking can be used here
-```
+1. Send question + candidate texts to reranking service
+2. Receive relevance scores (0-1)
+3. Sort by score, return top-K
+4. More sophisticated than semantic similarity, better accuracy
 
 ---
 
@@ -387,93 +558,31 @@ export async function crossEncoderRerank(
 
 ### Simple Hybrid (Semantic + Keyword)
 
-```typescript
+```ts
 // src/services/hybrid-search.ts
 
 export interface HybridSearchOptions {
-  semanticWeight: number; // 0-1 (default 0.7)
-  keywordWeight: number; // 0-1 (default 0.3)
+  semanticWeight: number; // 0-1, default 0.7
+  keywordWeight: number; // 0-1, default 0.3
 }
 
 /**
- * Hybrid search combines:
- * 1. Semantic similarity (vector search)
- * 2. Keyword matching (BM25 or simple word matching)
- *
- * Benefits:
- * - Semantic: Understands meaning
- * - Keyword: Catches exact terms
- * - Combined: Best of both worlds
+ * Hybrid search combines semantic + keyword methods
+ * Benefits: Semantic (understanding) + Keyword (precision)
  */
 export async function hybridSearch(
   question: string,
   index: PineconeIndex,
-  options: HybridSearchOptions = {
-    semanticWeight: 0.7,
-    keywordWeight: 0.3,
-  },
-): Promise<RetrievalResult[]> {
-  // 1. Semantic search
-  const questionEmbedding = await createEmbedding(question);
-  const semanticResults = await index.query({
-    vector: questionEmbedding,
-    topK: 10,
-    includeMetadata: true,
-  });
-
-  // 2. Keyword search (simple word matching)
-  const keywords = question
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((w) => w.length > 3);
-
-  const allDocs = await index.describe(); // Get all docs for keyword search
-  const keywordScores = new Map<string, number>();
-
-  allDocs.forEach((doc) => {
-    let score = 0;
-    keywords.forEach((keyword) => {
-      if (doc.metadata.text.toLowerCase().includes(keyword)) {
-        score += 1;
-      }
-    });
-    if (score > 0) {
-      keywordScores.set(doc.id, score / keywords.length);
-    }
-  });
-
-  // 3. Combine scores
-  const combined = new Map<string, number>();
-
-  // Add semantic scores
-  semanticResults.forEach((result, index) => {
-    const score = 1 - index / semanticResults.length; // Rank-based
-    combined.set(result.id, score * options.semanticWeight);
-  });
-
-  // Add keyword scores
-  keywordScores.forEach((score, id) => {
-    const current = combined.get(id) || 0;
-    combined.set(id, current + score * options.keywordWeight);
-  });
-
-  // 4. Return top results by combined score
-  return Array.from(combined.entries())
-    .map(([id, score]) => ({
-      id,
-      score,
-      text: allDocs.find((d) => d.id === id)?.metadata.text || "",
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
-}
-
-// Usage
-const hybridResults = await hybridSearch("neural networks", index, {
-  semanticWeight: 0.7,
-  keywordWeight: 0.3,
-});
+  options?: HybridSearchOptions,
+): Promise<RetrievalResult[]>;
 ```
+
+**Process:**
+
+1. **Semantic search:** Vector similarity (top 10)
+2. **Keyword search:** Word matching on keywords (score per doc)
+3. **Fusion:** Combine scores with configurable weights (default: 70% semantic, 30% keyword)
+4. **Return:** Top results ranked by combined score
 
 ---
 
@@ -481,53 +590,23 @@ const hybridResults = await hybridSearch("neural networks", index, {
 
 ### Combining All Techniques
 
-```typescript
+```ts
 // src/services/optimized-retrieval.ts
 
 export async function optimizedRetrieve(
   question: string,
   index: PineconeIndex,
   evaluator: RetrieverEvaluator,
-): Promise<RetrievalResult[]> {
-  console.log("🔄 Optimized Retrieval Pipeline");
-  console.log(`   Question: "${question}"`);
-
-  // Step 1: Expand query
-  console.log("\n1️⃣  Query Expansion");
-  const variants = await expandQuery(question);
-  console.log(`   Generated ${variants.length} variants`);
-
-  // Step 2: Multi-retriever search
-  console.log("\n2️⃣  Multi-Retriever Search");
-  const resultGroups = [];
-  for (const variant of variants) {
-    const results = await index.query({
-      vector: await createEmbedding(variant),
-      topK: 5,
-    });
-    resultGroups.push(results);
-  }
-  console.log(`   Retrieved from ${variants.length} queries`);
-
-  // Step 3: Fusion
-  console.log("\n3️⃣  Result Fusion");
-  const fused = reciprocalRankFusion(resultGroups);
-  console.log(`   Fused to ${fused.length} unique documents`);
-
-  // Step 4: Reranking
-  console.log("\n4️⃣  Semantic Reranking");
-  const reranked = await semanticRerank(question, fused, 5);
-  console.log(`   Reranked top 5 documents`);
-
-  // Step 5: Evaluation
-  console.log("\n5️⃣  Quality Evaluation");
-  const quality = await evaluator.evaluate(question, reranked);
-  console.log(`   nDCG: ${quality.ndcg.toFixed(3)}`);
-  console.log(`   MRR: ${quality.mrr.toFixed(3)}`);
-
-  return reranked;
-}
+): Promise<RetrievalResult[]>;
 ```
+
+**Complete pipeline:**
+
+1. **Query Expansion:** Generate multiple query variants
+2. **Multi-Retriever Search:** Search each variant (5 results each)
+3. **Result Fusion:** RRF combine all results
+4. **Semantic Reranking:** Re-score top candidates
+5. **Evaluation:** Calculate quality metrics (nDCG, MRR)
 
 ---
 
@@ -535,115 +614,43 @@ export async function optimizedRetrieve(
 
 ### Setup
 
-```typescript
+```ts
 // src/services/ab-testing.ts
 
 export interface ABTestResult {
-  variant: string; // 'baseline' or 'improved'
-  nDCG: number;
-  MRR: number;
-  latency: number;
-  cost: number;
+  variant: string; // 'baseline' | 'improved'
+  nDCG: number; // Normalized Discounted Cumulative Gain
+  MRR: number; // Mean Reciprocal Rank
+  latency: number; // Milliseconds
+  cost: number; // API call cost estimate
 }
 
 export async function runABTest(
   questions: string[],
   index: PineconeIndex,
   evaluator: RetrieverEvaluator,
-): Promise<Map<string, ABTestResult[]>> {
-  const results = new Map<string, ABTestResult[]>();
+): Promise<Map<string, ABTestResult[]>>;
 
-  for (const question of questions) {
-    const baselineStart = Date.now();
-
-    // Baseline: Standard retrieval
-    const baseline = await standardRetrieve(question, index);
-    const baselineTime = Date.now() - baselineStart;
-    const baselineQuality = await evaluator.evaluate(question, baseline);
-
-    results.set(question, [
-      {
-        variant: "baseline",
-        nDCG: baselineQuality.ndcg,
-        MRR: baselineQuality.mrr,
-        latency: baselineTime,
-        cost: baseline.length * 0.000001, // Rough estimate
-      },
-    ]);
-
-    // Improved: Optimized retrieval
-    const improvedStart = Date.now();
-    const improved = await optimizedRetrieve(question, index, evaluator);
-    const improvedTime = Date.now() - improvedStart;
-    const improvedQuality = await evaluator.evaluate(question, improved);
-
-    results.get(question)?.push({
-      variant: "improved",
-      nDCG: improvedQuality.ndcg,
-      MRR: improvedQuality.mrr,
-      latency: improvedTime,
-      cost: improved.length * 0.000001,
-    });
-  }
-
-  return results;
-}
-
-// Analyze results
 export function analyzeResults(results: Map<string, ABTestResult[]>): {
   improvement: number;
   costIncrease: number;
-} {
-  let totalBaselineNDCG = 0;
-  let totalImprovedNDCG = 0;
-  let totalBaselineCost = 0;
-  let totalImprovedCost = 0;
-  let count = 0;
-
-  results.forEach((variantResults) => {
-    const baseline = variantResults.find((r) => r.variant === "baseline");
-    const improved = variantResults.find((r) => r.variant === "improved");
-
-    if (baseline && improved) {
-      totalBaselineNDCG += baseline.nDCG;
-      totalImprovedNDCG += improved.nDCG;
-      totalBaselineCost += baseline.cost;
-      totalImprovedCost += improved.cost;
-      count++;
-    }
-  });
-
-  const avgBaselineNDCG = totalBaselineNDCG / count;
-  const avgImprovedNDCG = totalImprovedNDCG / count;
-  const avgBaselineCost = totalBaselineCost / count;
-  const avgImprovedCost = totalImprovedCost / count;
-
-  return {
-    improvement: ((avgImprovedNDCG - avgBaselineNDCG) / avgBaselineNDCG) * 100,
-    costIncrease: ((avgImprovedCost - avgBaselineCost) / avgBaselineCost) * 100,
-  };
-}
+};
 ```
 
-### Running Test
+**A/B Test Process:**
 
-```bash
-# Run A/B test
-node -e "
-const results = await runABTest(testQuestions, index, evaluator);
-const analysis = analyzeResults(results);
+1. For each test question, run baseline (standard retrieval)
+2. Run improved (optimized retrieval)
+3. Record: nDCG, MRR, latency, cost for each
+4. Analyze: Calculate average improvement % and cost increase %
 
-console.log('📊 A/B Test Results:');
-console.log(\`Quality improvement: +\${analysis.improvement.toFixed(1)}%\`);
-console.log(\`Cost increase: +\${analysis.costIncrease.toFixed(1)}%\`);
+### Running A/B Test
 
-if (analysis.improvement > 10 && analysis.costIncrease < 20) {
-  console.log('✅ Recommended for production');
-} else {
-  console.log('⚠️  Need further optimization');
-}
-"
-```
+**Decision criteria:**
+
+- Quality improvement > 10% + Cost increase < 20% → **Deploy** ✅
+- Quality improvement > 5% + Cost increase < 10% → **Consider** 🟡
+- Otherwise → **Iterate more** 🔄
 
 ---
 
@@ -651,16 +658,16 @@ if (analysis.improvement > 10 && analysis.costIncrease < 20) {
 
 ### Production Monitoring
 
-```typescript
+```ts
 // src/services/retrieval-monitoring.ts
 
 export interface RetrievalMetrics {
   timestamp: Date;
   question: string;
-  retrievalTime: number;
-  qualityScore: number;
+  retrievalTime: number; // Milliseconds
+  qualityScore: number; // 0-1
   documentsRetrieved: number;
-  answerSatisfactory: boolean; // From user feedback
+  answerSatisfactory: boolean; // User feedback
 }
 
 /**
@@ -668,38 +675,22 @@ export interface RetrievalMetrics {
  */
 export async function logRetrievalMetrics(
   metrics: RetrievalMetrics,
-): Promise<void> {
-  // Store in database or logging service
-  await database.retrieval_metrics.insert({
-    ...metrics,
-    timestamp: new Date(),
-  });
-}
+): Promise<void>;
 
 /**
- * Get recent performance
+ * Get recent performance metrics
  */
-export async function getRecentPerformance(hours: number = 24): Promise<{
+export async function getRecentPerformance(hours?: number): Promise<{
   avgQualityScore: number;
   satisfactionRate: number;
   p95Latency: number;
-}> {
-  const recent = await database.retrieval_metrics
-    .where("timestamp", ">", new Date(Date.now() - hours * 3600 * 1000))
-    .get();
-
-  const qualityScores = recent.map((m) => m.qualityScore);
-  const satisfactory = recent.filter((m) => m.answerSatisfactory).length;
-  const latencies = recent.map((m) => m.retrievalTime).sort((a, b) => a - b);
-
-  return {
-    avgQualityScore:
-      qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length,
-    satisfactionRate: (satisfactory / recent.length) * 100,
-    p95Latency: latencies[Math.floor(latencies.length * 0.95)],
-  };
-}
+}>;
 ```
+
+**Monitoring setup:**
+
+- Log every retrieval: timestamp, question, latency, quality, user satisfaction
+- Get performance: Aggregate last N hours, calculate p95 latency, satisfaction rate
 
 ---
 
@@ -718,26 +709,28 @@ export async function getRecentPerformance(hours: number = 24): Promise<{
 ## Decision Tree
 
 ```
+
 Does baseline retrieval work well (nDCG > 0.85)?
 ├─ YES: Stop here, optimization not needed
 └─ NO: Continue...
 
-   Is the problem missed documents?
-   ├─ YES: Try query expansion
-   │       Did quality improve?
-   │       ├─ YES: Deploy
-   │       └─ NO: Add fusion + reranking
-   │
-   └─ NO: Is the problem low-quality results?
-       ├─ YES: Try reranking
-       │       Too expensive?
-       │       ├─ YES: Use semantic ranking
-       │       └─ NO: Use cross-encoder
-       │
-       └─ NO: Try hybrid search
-           Combination helps?
-           ├─ YES: Deploy with A/B test
-           └─ NO: Reassess chunking strategy
+Is the problem missed documents?
+├─ YES: Try query expansion
+│ Did quality improve?
+│ ├─ YES: Deploy
+│ └─ NO: Add fusion + reranking
+│
+└─ NO: Is the problem low-quality results?
+├─ YES: Try reranking
+│ Too expensive?
+│ ├─ YES: Use semantic ranking
+│ └─ NO: Use cross-encoder
+│
+└─ NO: Try hybrid search
+Combination helps?
+├─ YES: Deploy with A/B test
+└─ NO: Reassess chunking strategy
+
 ```
 
 ---

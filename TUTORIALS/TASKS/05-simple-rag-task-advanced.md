@@ -1,512 +1,428 @@
 ---
-notes: Read `../_meta_.md` as instruction before take task actions
+notes: Training tutorial - focus on RAG concepts and benefits
 ---
 
-# Task 05 — Simple RAG [advanced]
+# Tutorial 05 — Retrieval-Augmented Generation (RAG)
 
-## Goal
+## What You'll Learn
 
-Build a complete Retrieval-Augmented Generation (RAG) pipeline that combines semantic search with LLM generation, creating a system that answers questions grounded in your document collection.
+In this tutorial, you'll understand:
 
----
-
-## Learning Outcomes
-
-After completing this task, you'll understand:
-
-- **Full RAG pipeline architecture** — Five stages from question to answer
-- **Why RAG reduces hallucination** — Grounding LLM in retrieved documents
-- **Prompt construction patterns** — System prompts, context assembly, instruction clarity
-- **Context windows and token limits** — Managing constraints in LLM context
-- **End-to-end system integration** — Combining embedding, retrieval, and generation
-- **Error handling in multi-stage systems** — Failures at retrieval vs generation
-- **Real-world RAG trade-offs** — Speed, cost, accuracy, context quality
+- **What RAG is and why it matters** — The architecture that makes AI systems reliable
+- **How RAG prevents hallucination** — Why giving context reduces false information
+- **The complete RAG pipeline** — Five stages from question to answer
+- **Prompt engineering for RAG** — How to guide the model's behavior
+- **Context window management** — Balancing information and constraints
+- **End-to-end system design** — Putting all components together
+- **Real-world RAG patterns** — How production systems work
+- **RAG trade-offs** — Speed, quality, cost decisions
 
 ---
 
-## Key Knowledge
+## The Core Problem: AI Hallucination
 
-### 5.1 Five-Stage RAG Pipeline
-1. **Embed** query → 2. **Retrieve** top-K docs → 3. **Assemble** context → 4. **Prompt** construct → 5. **Generate** answer. Failure at any stage breaks the chain.
+### What is Hallucination?
 
-### 5.2 Why Grounding Reduces Hallucination
-LLM trained to predict next token. Without docs, it generates plausible-sounding fiction. With docs in context, it learns to copy from them instead of hallucinate.
+When an AI language model generates false information as if it were true, with full confidence.
 
-### 5.3 Context Window Constraints
-GPT-3.5: 4K tokens. GPT-4: 8-128K tokens. Estimate: retrieved docs + prompt overhead + answer space. Budget carefully or truncate retrieved context.
-
-### 5.4 Prompt Engineering Impact
-Same question + same context, different prompts → 30% quality variance. Use system prompt to set persona, include explicit instructions like "Only use provided documents."
-
----
-
-## Requirements
-
-**Input:**
-
-- `question`: string (natural language question, e.g., "What is machine learning?")
-
-**Process (5 stages):**
-
-1. **Embedding** — Convert question to vector
-2. **Retrieval** — Find similar documents (top-K)
-3. **Context Assembly** — Format documents as readable context
-4. **Prompt Construction** — Create prompt with context + question
-5. **Generation** — Call LLM with full prompt, get answer
-
-**Output:**
-
-- `answer`: string (generated response grounded in documents)
-- `sources`: array of (id, text, score) — Which documents were used
-- `tokensUsed`: number — For cost tracking
-
----
-
-## Why RAG Works
-
-### The Problem: LLM Hallucination
+**Example:**
 
 ```
-Pure LLM (no RAG):
-Q: "What does your system do?"
-A: "I build AI robots and cure diseases"
-   ↓ WRONG! The model made this up (hallucinated)
-
-Risk: False information presented with confidence
+Q: "What does your company do?"
+LLM (without grounding): "Your company builds robots for space exploration and sells them on Mars."
+Reality: Your company makes software tools for developers.
 ```
 
-### The Solution: Ground in Documents
+The model sounds confident, but it's wrong. It "hallucinated" a plausible-sounding answer.
 
-```
-RAG System:
-Q: "What does your system do?"
-   ↓ Search documents
-Retrieved: ["Your system embeds text and searches vectors"]
-   ↓ Create prompt with retrieved text
-Prompt: "Based on: '...embeds text and searches vectors'
-         Answer: What does your system do?"
-   ↓ LLM respects context
-A: "Your system embeds text and searches vectors"
-   ✓ CORRECT! Answer is grounded in documents
-```
+### Why Hallucination Happens
 
-**Result:** LLM respects the constraint of using only provided documents.
+Language models are trained to predict the next most likely word. They're very good at this. But "likely next word" ≠ "true statement."
+
+The model has no concept of ground truth. It has never seen your document collection. It's generalizing from its training data, which might be incomplete or outdated.
 
 ---
 
-## Implementation
+## The RAG Solution
 
-**File:** `/src/services/rag.ts`
+### How RAG Works at a High Level
 
-**Core Interface:**
+Instead of asking the model to answer from memory, you:
 
-```typescript
-export interface RAGResult {
-  question: string;
-  answer: string;
-  sources: Array<{ id: string; text: string; score: number }>;
-  tokensUsed: number;
-}
+1. **Retrieve** relevant documents from your collection
+2. **Include** those documents in the prompt
+3. **Ask** the model to answer based only on those documents
 
-export async function ask(question: string): Promise<RAGResult>;
+The model then learns to copy or summarize from the provided context rather than hallucinate.
+
+### The Five-Stage Pipeline
+
+**Stage 1: Embed the Question**
+
+- Convert user question to embedding vector
+- Same model used for embedding documents
+
+**Stage 2: Retrieve Relevant Documents**
+
+- Search for top-K most similar documents
+- Return both the content and similarity scores
+
+**Stage 3: Format Context**
+
+- Take retrieved documents
+- Format them into readable context
+- Prepare for inclusion in prompt
+
+**Stage 4: Build the Prompt**
+
+- Create system instructions
+- Include the formatted context
+- Include the user question
+- Clear instructions to only use provided context
+
+**Stage 5: Generate Answer**
+
+- Send prompt to language model
+- Model generates response based on provided context
+- Return answer to user
+
+---
+
+## Why RAG Reduces Hallucination
+
+### Pure LLM: No Guardrails
+
 ```
+User: "What does RAG mean?"
+LLM thinks: "I'll search my training data memory..."
+LLM happens to generate: "RAG is Really Amazing Gadgets"
+User: "That doesn't sound right..."
+Reality: RAG is Retrieval-Augmented Generation
+```
+
+The model made something up.
+
+### RAG-Based System: Grounded
+
+```
+User: "What does RAG mean?"
+System: Searches for "RAG" in your documents
+System: Finds document saying "RAG is Retrieval-Augmented Generation"
+System: Builds prompt: "Based on: 'RAG is Retrieval-Augmented Generation', answer: What does RAG mean?"
+LLM: Sees the provided text and uses it
+LLM: "RAG is Retrieval-Augmented Generation"
+User: ✓ Correct
+```
+
+The model respects the provided grounding.
+
+---
+
+## Key Concepts
+
+### 1. The Retrieval Quality Matters Most
+
+If your retrieval step returns irrelevant documents, the LLM has bad information to work with.
+
+- Good retrieval → Good answers
+- Bad retrieval → Bad answers, no matter how good your LLM is
+
+This is why earlier tutorials on chunking, embeddings, and retrieval are crucial.
+
+### 2. Prompt Engineering Affects Quality
+
+Different prompts with the same context produce different qualities:
+
+**Poor Prompt:**
+"Answer this: " + context + " " + question
+
+**Better Prompt:**
+
+```
+You are a helpful assistant. Based ONLY on the following documents, answer the question.
+Do not use outside knowledge.
+If the answer is not in the documents, say "I don't know."
+
+Documents:
+[formatted context]
+
+Question:
+[user question]
+
+Answer:
+```
+
+The second prompt is much more effective because it:
+
+- Sets expectations
+- Gives clear instructions
+- Warns about limitations
+- Provides structure
+
+### 3. Context Window is Your Budget
+
+Language models have a maximum input length (context window):
+
+- GPT-3.5: ~4,000 tokens (roughly 3,000 words)
+- GPT-4: ~8,000 tokens
+- GPT-4 Turbo: ~128,000 tokens
+
+You must budget:
+
+- System prompt (instructions)
+- Retrieved context
+- User question
+- Space for the answer
+
+If you exceed the limit, the API rejects your request.
+
+**Example Budget (GPT-3.5, 4K tokens):**
+
+- System prompt: 200 tokens
+- Retrieved 5 documents, ~200 tokens each = 1,000 tokens
+- Question: 50 tokens
+- Buffer for answer: 300 tokens
+- **Available for context: ~1,000 tokens** (not unlimited!)
+
+This impacts how many documents you can retrieve.
+
+### 4. Similarity Scores Guide Relevance
+
+When your retrieval returns documents with scores:
+
+- 0.95 = Highly relevant, include in context
+- 0.75 = Decent relevance, probably include
+- 0.50 = Questionable, might want to filter out
+- 0.30 = Probably noise, don't include
+
+You can filter based on score thresholds to manage context size and quality.
+
+---
+
+## Real-World RAG Patterns
+
+### Pattern 1: Basic RAG (Most Common)
+
+- Retrieve top-K documents
+- Include all of them in context
+- Ask question
+- Simple, effective, works well
+
+### Pattern 2: Iterative RAG
+
+- First retrieval with standard query
+- If unsatisfied, refine query or retrieve more context
+- Ask again
+- More involved, better quality
+
+### Pattern 3: Multi-Stage RAG
+
+- Initial retrieval (broad)
+- Reranking step (score more carefully)
+- Final context assembly
+- Most complex, highest quality
+
+---
+
+## Common RAG Challenges
+
+### Challenge 1: Too Little Context
+
+**Symptom:** System can't find relevant information
+
+**Why:** Retrieval got low-quality results or topK was too small
+
+**Solutions:**
+
+- Improve chunking strategy
+- Adjust embedding model
+- Increase topK
+- Add query expansion
+
+### Challenge 2: Too Much Context
+
+**Symptom:** Ran out of context window
+
+**Why:** Retrieved too many documents or full documents are too long
+
+**Solutions:**
+
+- Decrease topK
+- Use smaller chunks
+- Filter with score thresholds
+- Summarize retrieved documents
+
+### Challenge 3: Wrong Context Retrieved
+
+**Symptom:** Retrieved documents aren't actually relevant
+
+**Why:** Embedding model mismatch, poor document representation, terminology differences
+
+**Solutions:**
+
+- Check embedding consistency
+- Improve document preparation
+- Better metadata and chunking
+- Query expansion (covered in Tutorial 08)
 
 ---
 
 ## Implementation Guide
 
-### Step 1: Create RAG service
+The RAG system consists of these core components:
 
 ```typescript
-// src/services/rag.ts
-import { querySimilar, RetrievalResult } from "./retrieval";
-import { getOpenAIClient } from "../adapters/openai";
-
-export interface RAGResult {
+// Core data types
+interface RAGResult {
   question: string;
   answer: string;
   sources: Array<{ id: string; text: string; score: number }>;
   tokensUsed: number;
-  duration: number; // milliseconds
+  duration: number;
 }
 
-/**
- * Stage 1 & 2: Retrieve relevant documents
- */
-function assembleContext(sources: RetrievalResult[]): string {
-  return sources
-    .map((doc, i) => `${i + 1}. ${doc.text}`)
-    .join(
-      "\
-\
-",
-    );
-}
+// Main RAG function - coordinates all stages
+async function ask(question: string): Promise<RAGResult>;
 
-/**
- * Stage 3: Build system prompt with context and rules
- */
-function buildSystemPrompt(context: string): string {
-  return `You are a helpful AI assistant answering questions based on provided documents.
+// Helper functions for each stage
+function retrieveDocuments(
+  query: string,
+  topK: number,
+): Promise<RetrievalResult[]>;
+function assembleContext(sources: RetrievalResult[]): string;
+function buildSystemPrompt(context: string): string;
+function generateAnswer(
+  systemPrompt: string,
+  userQuestion: string,
+): Promise<string>;
+```
 
-RELEVANT DOCUMENTS:
-${context}
+**The five-stage pipeline:**
 
-RULES:
-1. Answer ONLY using the provided documents
-2. If the answer is not in the documents, clearly state: \"I don't have enough information to answer this.\"
-3. Be concise and direct (1-2 paragraphs)
-4. Cite which document the answer comes from when possible
-5. Do not add information from your training data
+1. **Input validation** - Ensure question is not empty
+2. **Retrieve documents** - Call semantic search (top-3)
+3. **Assemble context** - Format documents into readable text
+4. **Build prompt** - Create system instructions + context + question
+5. **Generate answer** - Call LLM with complete prompt
 
-Respond in clear, natural language.`;
-}
+### Key Implementation Details
 
-/**
- * Complete RAG pipeline
- *
- * Process:
- * 1. Retrieve: Find relevant documents (top-3)
- * 2. Assemble: Format context from documents
- * 3. Construct: Build prompt with system instructions
- * 4. Generate: Call LLM with full prompt
- * 5. Return: Answer with sources and metrics
- */
-export async function ask(question: string): Promise<RAGResult> {
-  const startTime = Date.now();
+**System prompt structure:**
 
-  // Validation
-  if (!question || question.trim().length === 0) {
-    throw new Error("Question cannot be empty");
-  }
+- Clear instructions to use ONLY provided documents
+- Instruction to say "I don't know" if answer not available
+- Guidance to cite sources
+- Word limit (1-2 paragraphs)
 
-  const trimmedQuestion = question.trim();
+**Context budgeting:**
 
-  try {
-    console.log(`\
-🔍 RAG Pipeline Started`);
-    console.log(`   Question: \"${trimmedQuestion.substring(0, 60)}...\"`);
+Given GPT-4's context window (~8,000 tokens):
 
-    // STAGE 1 & 2: Retrieve relevant documents
-    console.log(`\
-  📚 Stage 1-2: Retrieving documents...`);
-    const sources = await querySimilar(trimmedQuestion, 3);
+- System instructions: ~200 tokens
+- Each document (top-3): ~300 tokens each = ~900 tokens
+- User question: ~50 tokens
+- Buffer for response: ~300 tokens
+- **Available for context: ~6,500 tokens** before exceeding limit
 
-    if (sources.length === 0) {
-      return {
-        question: trimmedQuestion,
-        answer:
-          "No relevant documents found in the knowledge base. Cannot answer this question.",
-        sources: [],
-        tokensUsed: 0,
-        duration: Date.now() - startTime,
-      };
-    }
+**Error handling:**
 
-    console.log(`      Found ${sources.length} relevant documents`);
-    sources.forEach((s, i) => {
-      console.log(
-        `      [${i + 1}] Score: ${s.score.toFixed(3)} - ${s.text.substring(0, 40)}...`,
-      );
-    });
-
-    // STAGE 3: Assemble context
-    console.log(`\
-  🧩 Stage 3: Assembling context...`);
-    const context = assembleContext(sources);
-    console.log(`      Context size: ${context.length} chars`);
-
-    // STAGE 4: Construct prompt
-    console.log(`\
-  ✍️  Stage 4: Constructing prompt...`);
-    const systemPrompt = buildSystemPrompt(context);
-    console.log(`      System prompt size: ${systemPrompt.length} chars`);
-
-    // STAGE 5: Generate answer
-    console.log(`\
-  🤖 Stage 5: Generating answer...`);
-    const client = getOpenAIClient();
-
-    const response = await client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: trimmedQuestion,
-        },
-      ],
-      temperature: 0.7, // Balanced between deterministic and creative
-      max_tokens: 500, // Limit answer length
-      top_p: 0.95, // Nucleus sampling
-    });
-
-    const answer = response.choices[0].message.content || "";
-    const tokensUsed = response.usage?.total_tokens || 0;
-
-    const duration = Date.now() - startTime;
-    console.log(`\
-  ✅ RAG Pipeline Complete (${duration}ms)`);
-    console.log(`     Tokens used: ${tokensUsed}`);
-
-    return {
-      question: trimmedQuestion,
-      answer,
-      sources: sources.map((s) => ({
-        id: s.id,
-        text: s.text.substring(0, 150), // Truncate for readability
-        score: s.score,
-      })),
-      tokensUsed,
-      duration,
-    };
+- No documents found → Return honest answer "I don't have information"
+- LLM errors → Surface error to user
+- Token limits → Filter documents or reduce topK
+  question: trimmedQuestion,
+  answer,
+  sources: sources.map((s) => ({
+  id: s.id,
+  text: s.text.substring(0, 150), // Truncate for readability
+  score: s.score,
+  })),
+  tokensUsed,
+  duration,
+  };
   } catch (error) {
-    const duration = Date.now() - startTime;
+  const duration = Date.now() - startTime;
 
-    if (error instanceof Error) {
-      console.error(`\
+      if (error instanceof Error) {
+        console.error(`\
+
   ❌ RAG Pipeline Error: ${error.message}`);
       throw new Error(`RAG failed: ${error.message}`);
-    }
-
-    throw error;
   }
+
+      throw error;
+
+  }
+  }
+
+````
+
+### API Endpoint Pattern
+
+**Endpoint to implement:**
+
+```typescript
+// POST /api/rag/ask
+// Request: { "question": "What is machine learning?" }
+// Response:
+// {
+//   "question": "...",
+//   "answer": "...",
+//   "sources": [{ "id": "doc-1", "text": "...", "score": 0.92 }],
+//   "tokensUsed": 145,
+//   "duration": 1250
+// }
+
+async function askEndpoint(req: Request, res: Response): Promise<void> {
+  // 1. Validate question parameter
+  // 2. Call ask() service
+  // 3. Return formatted response
+  // 4. Handle errors appropriately
 }
-```
+````
 
-### Step 2: Create API endpoint
+**Validation checks needed:**
 
-```typescript
-// src/endpoints/api/rag.ts
-import { Router, Request, Response } from "express";
-import { ask } from "../../services/rag";
+- Question is provided and non-empty
+- Question is a string (not number, object, etc.)
+- Question length reasonable (max 1000 chars)
+- Rate limiting to prevent abuse
 
-const router = Router();
+### Testing Your RAG Implementation
 
-/**
- * POST /api/rag/ask
- *
- * Request body:
- * {
- *   \"question\": \"What is machine learning?\"
- * }
- *
- * Response:
- * {
- *   \"question\": \"What is machine learning?\",
- *   \"answer\": \"Machine learning is a subset...\",
- *   \"sources\": [
- *     {
- *       \"id\": \"doc-1\",
- *       \"text\": \"Machine learning is...\",
- *       \"score\": 0.92
- *     }
- *   ],
- *   \"tokensUsed\": 145,
- *   \"duration\": 1250
- * }
- */
-router.post("/ask", async (req: Request, res: Response) => {
-  const { question } = req.body;
+Once you've built the RAG service:
 
-  // Validation
-  if (!question) {
-    return res.status(400).json({
-      error: "question field required in request body",
-    });
-  }
+1. **Setup sample data** - Seed your Pinecone index with test documents
+2. **Test basic flow** - Ask simple questions and verify answers with sources
+3. **Test edge cases** - Ask questions outside your knowledge base, verify honest "I don't know" response
+4. **Check quality** - Use evaluation metrics (Tutorial 07) to measure accuracy
 
-  if (typeof question !== "string") {
-    return res.status(400).json({
-      error: "question must be a string",
-    });
-  }
+**Success indicates:**
 
-  if (question.length > 1000) {
-    return res.status(400).json({
-      error: "question too long (max 1000 characters)",
-    });
-  }
+- Answers are grounded in retrieved documents (not hallucinating)
+- Sources include relevant document references
+- Latency is reasonable (<2 seconds)
+- Unknown questions get appropriate "I don't have information" responses
 
-  try {
-    const result = await ask(question);
-    return res.json(result);
-  } catch (error) {
-    console.error("RAG endpoint error:", error);
+### Testing Strategies
 
-    if (error instanceof Error) {
-      return res.status(500).json({
-        error: error.message,
-      });
-    }
+**Test direct topic match:**
+Question asks about something directly covered in your documents. Verify you get accurate answers with high-confidence sources.
 
-    return res.status(500).json({
-      error: "RAG pipeline failed",
-    });
-  }
-});
+**Test semantic variations:**
+Ask the same question using different words. RAG should still retrieve and answer correctly due to embedded semantics.
 
-export default router;
-```
+**Test multi-topic questions:**
+Questions combining multiple concepts. Verify retrieval finds relevant documents across topics.
 
-### Step 3: Integrate into main API
+**Test off-topic questions:**
+Ask questions completely outside your knowledge base. System should honestly say "I don't have information" rather than hallucinating.
 
-```typescript
-// src/endpoints/api/index.ts
-import { Router } from "express";
-import embedRouter from "./embed";
-import searchRouter from "./search";
-import ragRouter from "./rag";
+**Latency measurement:**
 
-const router = Router();
-
-router.use("/embed", embedRouter);
-router.use("/search", searchRouter);
-router.use("/rag", ragRouter);
-
-export default router;
-```
-
----
-
-## Testing
-
-### Test 1: Basic RAG pipeline
-
-```bash
-# Ensure sample data is seeded (Task 03)
-SEED_DATA=true npm run dev
-
-# In another terminal, test RAG
-curl -X POST http://localhost:5000/api/rag/ask \\
-  -H \"Content-Type: application/json\" \\
-  -d '{\"question\": \"What is machine learning?\"}'
-
-# Expected response:
-# {
-#   \"question\": \"What is machine learning?\",
-#   \"answer\": \"Based on the provided documents, machine learning...\",
-#   \"sources\": [
-#     {
-#       \"id\": \"doc-1\",
-#       \"text\": \"Machine learning is a subset...\",
-#       \"score\": 0.92
-#     }
-#   ],
-#   \"tokensUsed\": 145,
-#   \"duration\": 1250
-# }
-```
-
-### Test 2: Various question types
-
-```bash
-# Test A: Direct topic match
-curl -X POST http://localhost:5000/api/rag/ask \\
-  -d '{\"question\": \"What are embeddings?\"}'
-
-# Test B: Semantic variation (different wording, same topic)
-curl -X POST http://localhost:5000/api/rag/ask \\
-  -d '{\"question\": \"How are texts converted to vectors?\"}'
-
-# Test C: Multi-topic question
-curl -X POST http://localhost:5000/api/rag/ask \\
-  -d '{\"question\": \"How do embeddings and vector databases work together?\"}'
-
-# Test D: Off-topic question (should get \"no information\" response)
-curl -X POST http://localhost:5000/api/rag/ask \\
-  -d '{\"question\": \"What is the capital of France?\"}'
-```
-
-**Success criteria:**
-
-- ✅ Answer generated without errors
-- ✅ Answer is grounded in retrieved documents
-- ✅ Sources are correctly attributed
-- ✅ Response time < 3 seconds (embedding ~500ms + LLM ~1500ms + overhead)
-- ✅ Off-topic questions get \"insufficient information\" response
-- ✅ tokensUsed is reasonable (typically 100-200)
-
----
-
-## RAG Pipeline Architecture
-
-### Visual Flow
-
-```
-┌──────────────────────────────────────┐
-│ INPUT: Question (natural language)   │
-│ \"What is machine learning?\"          │
-└────────────┬─────────────────────────┘
-             │
-      ┌──────▼──────┐
-   1. │  EMBEDDING  │  Convert question to 1536-dim vector
-      │ ~100-200ms  │
-      └──────┬──────┘
-             │
-      ┌──────▼──────┐
-   2. │ RETRIEVAL   │  Find top-3 similar documents
-      │ ~50-100ms   │
-      └──────┬──────┘
-             │
-      ┌──────▼──────┐
-   3. │CONTEXT      │  Format documents with rankings:
-      │ASSEMBLY     │  \"1. [doc-1, score 0.92]
-      │ ~1ms        │   2. [doc-2, score 0.81]
-      └──────┬──────┘  3. [doc-3, score 0.75]\"
-             │
-      ┌──────▼──────────┐
-   4. │ PROMPT          │  Build instruction + context + question:
-      │ CONSTRUCTION    │  \"System: Answer only from documents
-      │ ~1ms            │   Context: [3 documents]
-      └──────┬──────────┘   User: [original question]\"
-             │
-      ┌──────▼──────┐
-   5. │ GENERATION  │  Call LLM with full prompt
-      │ ~1-2 sec    │
-      └──────┬──────┘
-             │
-┌────────────▼─────────────────────────┐
-│ OUTPUT:                              │
-│ - Answer (grounded in documents)     │
-│ - Sources (which docs were used)     │
-│ - Metrics (tokens, time)             │
-└──────────────────────────────────────┘
-```
-
-### Stage Breakdown
-
-**Stage 1: Embedding (100-200ms)**
-
-- Convert question to vector using OpenAI embedding model
-- Same model used for document embeddings
-- Output: 1536-dimensional vector
-
-**Stage 2: Retrieval (50-100ms)**
-
-- Call Pinecone with question vector
-- Get top-K similar documents (K=3)
-- Each result includes: id, text, similarity score
-
-**Stage 3: Context Assembly (1ms)**
-
-- Format retrieved documents nicely
-- Preserve relevance ordering
-- Keep scores for reference
-
-**Stage 4: Prompt Construction (1ms)**
-
-- Create system prompt with rules
-- Insert retrieved documents
-- Add user question
-
-**Stage 5: Generation (1-2 seconds)**
-
-- Call GPT-3.5-turbo with full prompt
-- Model respects system prompt constraint
+- Embedding: ~100-200ms
+- Retrieval: ~50-100ms
+- LLM generation: ~1-2 seconds
+- **Total: ~2-3 seconds** per question
 - Returns generated answer
 
 ---
@@ -597,92 +513,76 @@ For 1000 requests/month: $0.33
 
 ### Pattern 1: Multi-Query Expansion
 
-```typescript
+````typescript
 export async function askWithQueryExpansion(question: string) {
   // Generate alternative queries
   const variations = await generateQueryVariations(question);
 
-  // Retrieve for each variation
-  const allResults = [];
-  for (const query of variations) {
-    const results = await querySimilar(query, 3);
-    allResults.push(...results);
-  }
+### Advanced Patterns
 
-  // Deduplicate and rerank
-  const unique = deduplicate(allResults);
-  const ranked = rerank(unique);
+**Pattern 1: Query Expansion**
 
-  // Use top-3 for RAG
-  return ask(question, ranked.slice(0, 3));
-}
-```
-
-### Pattern 2: Streaming Responses
+Instead of searching for the exact user question, generate variations and search for all of them:
 
 ```typescript
-export async function askStreaming(
+// Generate query variations
+function generateQueryVariations(question: string): string[]
+
+// Search with all variations
+async function askWithExpansion(question: string): Promise<RAGResult>
+````
+
+Benefits: Catches documents using different terminology. Trade-off: 4-5x retrieval cost, 15-30% quality improvement.
+
+**Pattern 2: Streaming Responses**
+
+Stream LLM response to user immediately instead of waiting:
+
+```typescript
+// Stream answer chunks as LLM generates them
+async function askStreaming(
   question: string,
   onChunk: (chunk: string) => void,
-) {
-  const sources = await querySimilar(question, 3);
-  const context = assembleContext(sources);
-  const prompt = buildSystemPrompt(context);
-
-  const client = getOpenAIClient();
-
-  const stream = client.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    stream: true,
-    messages: [
-      { role: "system", content: prompt },
-      { role: "user", content: question },
-    ],
-  });
-
-  for await (const event of stream) {
-    const chunk = event.choices[0].delta.content;
-    if (chunk) onChunk(chunk);
-  }
-}
+): Promise<RAGResult>;
 ```
+
+Benefits: Faster perceived performance. Trade-off: More complex error handling.
 
 ---
 
-## Constraints
+## Key Configuration Parameters
 
-- Simple context concatenation (no re-ranking)
-- Fixed topK=3 (can be tuned)
-- No query expansion (Task 08)
-- Fixed temperature=0.7
-- Max answer 500 tokens
+**topK:** How many documents to retrieve
+
+- Default: 3 (good balance)
+- High-quality needs: 5
+- When retrieval is poor: Keep at 3, fix retrieval instead
+
+**Temperature:** LLM creativity (0=deterministic, 1=creative)
+
+- Default: 0.7 (good for RAG)
+- Factual needs: 0 (deterministic)
+- Creative needs: 0.9
+
+**Max tokens:** Maximum answer length
+
+- Default: 500 (good for most Q&A)
+- Adjust based on your needs
 
 ---
 
 ## Next Steps
 
-**After this task:**
+**After this tutorial:**
 
-1. Task 06: Improve chunking to get better retrieval results
+1. Task 06: Improve chunking strategy for better retrieval
 2. Task 07: Evaluate retrieval quality with metrics
-3. Task 08: Optimize with advanced techniques
+3. Task 08: Advanced optimization techniques
 
-**To improve quality:**
+**To improve your RAG quality:**
 
-- Use evaluation metrics (Task 07)
-- Adjust topK based on results
+- Use evaluation metrics (Tutorial 07) to measure performance
+- Adjust topK based on your data
 - Experiment with system prompts
 - Add domain-specific instructions
-
----
-
-## Tutorial Trigger
-
-- **rag.md** → Fill with complete RAG pipeline breakdown
-
-Tutorial focus:
-
-- What = RAG explained: why it works, when to use it
-- How = Full pipeline implementation, prompt engineering
-- Gotchas = Hallucination risks, context limits, chunking impact
-- Trade-offs = Speed vs quality, cost vs accuracy, context size limits
+- Consider query expansion for better coverage

@@ -9,27 +9,18 @@
 ```ts
 import { Pinecone } from "@pinecone-database/pinecone";
 
-let client: Pinecone | null = null;
+// Singleton: Returns cached client or initializes new one
+export function getPineconeClient(): Pinecone;
 
-export function getPineconeClient(): Pinecone {
-  if (client) return client;
-
-  const key = process.env.PINECONE_API_KEY;
-  if (!key || key.length < 20)
-    throw new Error("Missing/short PINECONE_API_KEY");
-
-  client = new Pinecone({
-    apiKey: key,
-    environment: process.env.PINECONE_ENVIRONMENT ?? "us-east-1-aws",
-  });
-  console.log("✓ Pinecone client initialized");
-  return client;
-}
-
-export function resetPineconeClient(): void {
-  client = null;
-}
+// Reset cached client (for testing)
+export function resetPineconeClient(): void;
 ```
+
+**Implementation notes:**
+
+- `getPineconeClient()` validates `PINECONE_API_KEY` env var
+- Caches client to avoid recreating on each call
+- Throws if API key is missing or invalid
 
 ---
 
@@ -38,55 +29,31 @@ export function resetPineconeClient(): void {
 **File:** `src/services/index.ts`
 
 ```ts
-import { Pinecone } from "@pinecone-database/pinecone";
-import { IndexDescription } from "@pinecone-database/pinecone";
+import { Pinecone, IndexDescription } from "@pinecone-database/pinecone";
 import { getPineconeClient } from "../adapters/pinecone";
 
-const CFG = {
-  name: process.env.PINECONE_INDEX_NAME ?? "rag-documents",
-  dimension: 1536,
-  metric: "cosine" as const,
-};
+// Configuration
+const CFG_NAME = process.env.PINECONE_INDEX_NAME ?? "rag-documents";
+const CFG_DIMENSION = 1536;
+const CFG_METRIC = "cosine";
 
-export async function getOrCreatePineconeIndex(): Promise<IndexDescription> {
-  const pc = getPineconeClient();
-  const { name } = CFG;
+// Get or create index if doesn't exist
+export async function getOrCreatePineconeIndex(): Promise<IndexDescription>;
 
-  // 1. Check if index exists
-  const idxList = await pc.listIndexes();
-  const existing = idxList.indexes?.find((i) => i.name === name);
-  if (existing) return existing;
-
-  // 2. Create index if not exists
-  await pc.createIndex({
-    name,
-    dimension: CFG.dimension,
-    metric: CFG.metric,
-    spec: { serverless: { cloud: "aws", region: "us-east-1" } },
-  });
-
-  // 3. Wait for index to be ready (poll 30 times with 2s intervals)
-  for (let i = 0; i < 30; i++) {
-    const idx = (await pc.listIndexes()).indexes?.find((i) => i.name === name);
-    if (idx?.status?.state === "Ready") return idx;
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  throw new Error("Index creation timeout");
-}
-
+// Check if index is healthy and get vector count
 export async function checkIndexHealth(
-  name = CFG.name,
-): Promise<{ healthy: boolean; totalVectors: number }> {
-  const stats = await getPineconeClient().Index(name).describeIndexStats();
-  return { healthy: true, totalVectors: stats.totalVectorCount ?? 0 };
-}
+  name?: string,
+): Promise<{ healthy: boolean; totalVectors: number }>;
 
-export async function deletePineconeIndex(name = CFG.name): Promise<void> {
-  if (process.env.CONFIRM_DELETE !== "true")
-    throw new Error("Set CONFIRM_DELETE=true to nuke");
-  await getPineconeClient().deletePineconeIndex(name);
-}
+// Delete index (requires CONFIRM_DELETE=true env var)
+export async function deletePineconeIndex(name?: string): Promise<void>;
 ```
+
+**Implementation notes:**
+
+- `getOrCreatePineconeIndex()` checks existence, creates if needed, polls for Ready status
+- `checkIndexHealth()` retrieves index stats from Pinecone
+- `deletePineconeIndex()` requires safety confirmation flag
 
 ---
 
@@ -100,22 +67,23 @@ import { getPineconeClient } from "../adapters/pinecone";
 
 export const INDEX_NAME = process.env.PINECONE_INDEX_NAME ?? "rag-documents";
 
-export function getPineconeIndexClient(): Pinecone.Index<Pinecone.RecordMetadata> {
-  return getPineconeClient().Index(INDEX_NAME);
-}
+// Get typed index client for upsert/query operations
+export function getPineconeIndexClient(): Pinecone.Index<Pinecone.RecordMetadata>;
 
+// Metadata attached to each vector
 export interface VectorMetadata {
-  text: string;
-  documentId: string;
-  chunkIndex: number;
-  source?: string;
-  timestamp?: number;
+  text: string; // Original text content
+  documentId: string; // Source document ID
+  chunkIndex: number; // Chunk position if split
+  source?: string; // Source URL or identifier
+  timestamp?: number; // When indexed
 }
 
+// Vector ready for upsert (embedding + metadata)
 export interface UpsertVector {
-  id: string;
-  values: number[]; // 1536-d embedding
-  metadata?: VectorMetadata;
+  id: string; // Unique vector ID
+  values: number[]; // 1536-dimensional embedding
+  metadata?: VectorMetadata; // Associated metadata
 }
 ```
 

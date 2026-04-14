@@ -33,8 +33,6 @@ Task 03 has been fully implemented with enhancements for Task 04 integration.
    - ✅ Request validation
    - ✅ Detailed logging
 
-
-
 ## Task 04: Query Similarity [Advanced] - READY FOR IMPLEMENTATION
 
 ### Prerequisites Met
@@ -58,31 +56,23 @@ Task 04 can now build on Task 03 with:
 
 ### Expected Task 04 Implementation
 
-```
-Query Pipeline:
+**Function**: `handleQueryRequest(query: string, topK: number): Promise<QueryResponse>`
 
-User Query (string)
-    ↓ (embed query using same model)
-Query Embedding (1536 dimensions)
-    ↓ (search Pinecone index)
-Pinecone Returns Top-K matches
-    ↓ (format with similarity scores)
-Return Results with:
-  - Document ID
-  - Original text
-  - Similarity score (0.0-1.0)
-  - Metadata for context
-```
+- Embed query using same model as documents (`text-embedding-3-small`)
+- Search Pinecone index by cosine similarity
+- Return top-K results with document ID, text, score (0.0-1.0), and metadata
 
 ### Files Task 04 Will Use
 
 From Task 03:
+
 - `src/adapters/openai/embedding.ts` - Same embedding service
 - `src/adapters/pinecone/operations.ts` - Index access
 - `src/services/document-loader.ts` - Load documents (if needed)
 - `src/services/upsert.ts` - Reference for data structure
 
 New Task 04 Files:
+
 - `src/services/retrieval.ts` - Query implementation
 - `src/endpoints/api/search.ts` - Search API endpoint
 
@@ -92,103 +82,59 @@ New Task 04 Files:
 
 ### Stage 1: Document Preparation (Task 03)
 
-```
-Input Documents:
-{
-  "id": "doc-1",
-  "text": "Full document content...",
-  "metadata": { "source": "...", "topic": "...", ... }
-}
+**Function**: `loadDocumentsFromJSON() | loadDocumentsFromCSV() | loadDocumentsFromAPI()`
 
-↓ Validation & Processing
-
-Processed Documents:
-- ID validated (string)
-- Text trimmed and validated (string)
-- Metadata extracted (Record<string, any>)
-```
+- Input: Document source (JSON file, CSV file, or API endpoint)
+- Processing: ID validation, text trimming, metadata extraction
+- Output: `Document[]` with validated `id`, `text`, and `metadata` fields
 
 ### Stage 2: Embedding (Task 03)
 
-```
-Processed Documents
-↓ (OpenAI embedding API)
-Embeddings Created:
-{
-  "id": "doc-1",
-  "values": [0.123, -0.456, ..., 0.789],  // 1536 dimensions
-  "metadata": { 
-    "text": "First 1000 chars...",
-    "source": "...",
-    "topic": "...",
-    ...
-  }
-}
-```
+**Function**: `embedDocuments(documents: Document[]): Promise<EmbeddedDocument[]>`
+
+- Input: Validated documents from Stage 1
+- Processing: OpenAI API embedding (`text-embedding-3-small`, 1536 dimensions)
+- Output: `EmbeddedDocument[]` with 1536-dim vectors and preserved metadata
 
 ### Stage 3: Upsert to Pinecone (Task 03)
 
-```
-Embeddings
-↓ (batch upsert)
-Pinecone Index:
-  - 1536-dim vectors
-  - Searchable by similarity
-  - Metadata indexed and retrievable
-  - Status: Ready for queries
-```
+**Function**: `upsertBatch(embeddings: EmbeddedDocument[]): Promise<UpsertResponse>`
+
+- Input: Embedded documents from Stage 2
+- Processing: Batch upsert to Pinecone index (1536-dim vectors)
+- Output: Pinecone index ready for similarity searches with searchable metadata
 
 ### Stage 4: Query & Retrieval (Task 04)
 
-```
-User Query: "What is machine learning?"
-↓ (embed same way as docs)
-Query Embedding: [0.120, -0.455, ..., 0.790]
-↓ (search Pinecone)
-Top-K Results:
-[
-  {
-    "id": "doc-1",
-    "text": "Machine learning is...",
-    "score": 0.924,  // Cosine similarity
-    "metadata": { "source": "ai-intro", ... }
-  },
-  {
-    "id": "doc-2",
-    "text": "Embeddings are...",
-    "score": 0.812,
-    "metadata": { "source": "embeddings-guide", ... }
-  },
-  ...
-]
-```
+**Function**: `queryDocuments(query: string, topK: number): Promise<SearchResult[]>`
+
+- Input: User query string and result count
+- Processing: Embed query using same model, search Pinecone by cosine similarity
+- Output: `SearchResult[]` with document ID, text, similarity score (0.0-1.0), and metadata
 
 ---
 
 ## Consistency Requirements for Task 03 → Task 04
 
 ### Embedding Model
+
 - **Task 03**: Uses `text-embedding-3-small` via OpenAI
 - **Task 04**: Must use same model for consistency
 - **Why**: Different models produce different embeddings; similarity searches only work with same model
 
 ### Metadata Structure
+
 Task 04 should preserve metadata from Task 03:
 
-```json
-{
-  "source": "where document came from",
-  "difficulty": "skill level for learners",
-  "topic": "subject category",
-  "chunk_number": "if chunked from larger doc",
-  "language": "language of document",
-  ...any other custom fields...
-}
-```
-
-This metadata helps Task 04 provide context and filtering.
+- `source` - Where document came from
+- `difficulty` - Skill level for learners
+- `topic` - Subject category
+- `chunk_number` - If chunked from larger document
+- `language` - Language of document
+- Custom fields supported for filtering and context
 
 ### Index Configuration
+
 - **Task 03 Action**: Upserts to Pinecone index (creates if needed)
 - **Task 04 Action**: Queries same index
 - **Requirement**: Both use same `PINECONE_INDEX_NAME` env var
@@ -199,77 +145,47 @@ This metadata helps Task 04 provide context and filtering.
 
 ### Test 1: Verify Task 03 Works
 
-```bash
-# Start dev server
-npm run dev
+**API Call**: `POST /api/upsert`
 
-# In another terminal, upsert sample data
-curl -X POST http://localhost:5001/pinecone-ai-starter/us-central1/endpoints/api/upsert \
-  -H "Content-Type: application/json" \
-  -H "auth_token: test" \
-  -d '@sample-upsert-request.json'
-
-# Expected: 200 with metrics showing 3 docs upserted
+```typescript
+// Start dev server: npm run dev
+// Request: { documents: Document[] }
+// Response: { success: true, metrics: { count, time, cost } }
+// Expected: 3 documents upserted with error-free metrics
 ```
 
 ### Test 2: Verify Data in Pinecone
 
-```bash
-# Query Pinecone directly
-node -e "
-const { getPineconeIndexClient } = require('./lib/adapters/pinecone/operations');
-const index = getPineconeIndexClient();
-index.describeIndexStats().then(stats => 
-  console.log('Vectors in index:', stats.totalVectorCount)
-);
-"
-```
+**Function**: `getPineconeIndexClient().describeIndexStats()`
 
-Should show 3 (or more if previous tests) vectors.
+- Verify total vector count in index
+- Expected: 3+ vectors present from upsert operation
 
 ### Test 3: Prepare for Task 04
 
-Once Task 04 is implemented:
+**API Call**: `POST /api/search`
 
-```bash
-# Query similarity should find docs similar to "machine learning"
-curl -X POST http://localhost:5001/pinecone-ai-starter/us-central1/endpoints/api/search \
-  -H "Content-Type: application/json" \
-  -H "auth_token: test" \
-  -d '{
-    "query": "What is machine learning?",
-    "topK": 3
-  }'
-
-# Expected: Return doc-1, doc-2, doc-3 with high similarity scores
+```typescript
+// Request: { query: string, topK: number }
+// Response: { results: SearchResult[] }
+// Expected: Top-3 docs with similarity scores (0.8+)
 ```
 
 ---
-
 
 ## Environment Setup for Both Tasks
 
 ### Required Environment Variables
 
-```bash
-# OpenAI API
-OPENAI_API_KEY=sk_...
-
-# Pinecone
-PINECONE_API_KEY=pcsk_...
-PINECONE_INDEX_NAME=rag-documents
-
-# Firebase (if using)
-FIREBASE_PROJECT_ID=pinecone-ai-starter
-```
+- `OPENAI_API_KEY` - OpenAI API key
+- `PINECONE_API_KEY` - Pinecone API key
+- `PINECONE_INDEX_NAME` - Index name (e.g., `rag-documents`)
+- `FIREBASE_PROJECT_ID` - Firebase project (optional)
 
 ### Installation
 
 ```bash
-cd functions
-npm install
-npm run build
-npm run dev
+cd functions && npm install && npm run build && npm run dev
 ```
 
 ---
@@ -279,12 +195,14 @@ npm run dev
 ### Task 03 Typical Performance
 
 **For 3 sample documents:**
+
 - Time: ~1.5 seconds
 - Embedding cost: $0.0000015
 - Storage cost/month: $0.000075
 - Success rate: 100% (no failures)
 
 **For 100 documents:**
+
 - Time: ~15-20 seconds (depends on rate limit)
 - Embedding cost: $0.00005
 - Storage cost/month: $0.0025
@@ -293,11 +211,13 @@ npm run dev
 ### Task 04 Expected Performance
 
 **For single query:**
+
 - Time: <200ms (mostly API latency)
 - Cost: Negligible (only query, no embedding storage)
 - No storage cost
 
 **For batch queries (100 queries):**
+
 - Time: ~20 seconds
 - Cost: Negligible
 - Throughput: ~5 queries/second
@@ -332,7 +252,6 @@ npm run dev
    - API documentation
    - Usage examples
    - Performance tuning guide
-
 
 ---
 

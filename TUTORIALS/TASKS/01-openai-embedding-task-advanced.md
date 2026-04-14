@@ -1,145 +1,166 @@
 ---
-notes: Read `../_meta_.md` as instruction before take task actions
+notes: Training tutorial - remove implementation details and focus on concepts
 ---
 
-# Task 01 — OpenAI Embedding [advanced]
+# Tutorial 01 — Understanding Embeddings
 
-## Goal
+## What You'll Learn
 
-Create a function that transforms text into semantic vector embeddings using OpenAI's embedding model, understanding how embeddings enable AI applications.
+In this tutorial, you'll discover:
 
----
-
-## Learning Outcomes
-
-After completing this task, you'll understand:
-
-- **What embeddings are** — Numerical representations that capture semantic meaning
-- **Why embeddings enable semantic search** — Beyond simple keyword matching
-- **How to integrate OpenAI API from TypeScript** — Production-grade client patterns
-- **Error handling and resilience** — Rate limits, auth failures, retries
-- **Cost management** — Token counting and pricing implications
-- **Dimension and model selection** — Why 1536 dimensions for text-embedding-3-small
-- **Singleton pattern for expensive resources** — Client initialization best practice
+- **What embeddings are** — How text becomes numbers that computers can understand
+- **Why embeddings are powerful** — The difference between keyword search and semantic understanding
+- **How embeddings capture meaning** — What makes two texts similar
+- **Real-world applications** — How embeddings enable search, recommendation, and AI systems
+- **Trade-offs in embedding models** — Speed, accuracy, and cost considerations
+- **Practical use in AI systems** — Where embeddings fit in the bigger picture
 
 ---
 
-## Requirements
-
-**Input:**
-
-- `text`: string (natural language text, e.g., "What is machine learning?")
-
-**Output:**
-
-- `embedding`: number[] array
-  - Type: 1536-dimensional vector
-  - Format: normalized float values in range [-1, 1]
-  - Properties: Captures semantic meaning of input text
-
-**Model Selection:**
-
-- Model: `text-embedding-3-small`
-- Dimensions: 1536
-- Cost: $0.02 per 1M tokens
-- Speed: ~100ms per request
-- Why this model: Good balance of cost vs quality for RAG systems
-
----
-
-## Why Embeddings Matter
-
-### The Problem: Keyword Search Limitations
-
-```
-Traditional keyword search:
-Query: "machine learning"
-Doc A: "ML is teaching computers to learn"
-Doc B: "The teaching profession requires patience"
-Match score: Same (both have "teaching")
-Result: ❌ False positive (Doc B irrelevant)
-```
-
-### The Solution: Semantic Search with Embeddings
-
-```
-Semantic search:
-Query: "machine learning" → [0.1, -0.2, 0.3, ..., 0.5]
-Doc A: "ML is teaching computers..." → [0.11, -0.19, 0.31, ..., 0.48]
-Doc B: "The teaching profession..." → [-0.4, 0.8, -0.2, ..., -0.3]
-
-Similarity A: 0.95 ✅ (very similar meaning)
-Similarity B: 0.15 ❌ (different meaning, despite keyword match)
-```
-
-**Result:** Embeddings understand meaning, not just keywords.
-
----
-
-## Implementation
-
-**See:** [Action Steps](./.task_actions/advanced/01-openai-embedding-action-advanced.md)
-
-**Files to create:**
-
-- `src/adapters/openai.ts` — OpenAI client initialization (singleton pattern)
-- `src/services/embedding.ts` — Embedding business logic with cost tracking
-- `src/endpoints/api/embed.ts` — REST endpoint for embedding requests
-
-**Key functions:**
-
-- `getOpenAIClient(): OpenAI` — Singleton client
-- `createEmbedding(text: string): Promise<number[]>` — Create embeddings
-- `estimateTokens(text: string): number` — Token estimation
-- `estimateCost(text: string): number` — Cost calculation
-
----
-
-## Embedding Fundamentals
+## The Core Concept: From Words to Numbers
 
 ### What is an Embedding?
 
-**Simple definition:** A list of numbers that represents the meaning of text.
+An embedding is a numerical representation of text. Instead of storing "Hello world", we store a list of numbers (typically 300-1536 numbers for modern models) that captures the meaning of that text.
 
-```
-Text: \"machine learning\"
-     ↓ (embedding model)
-Vector: [0.123, -0.456, 0.789, ..., 0.234]
-        └─ 1536 dimensions ─┘
+These numbers form a vector—think of it as a point in multi-dimensional space. Text with similar meaning will have vectors that point in similar directions.
 
-Properties:
+### Why This Matters
+
+Our brains understand meaning through language patterns and context. Computers don't "understand" language—they do math. Embeddings are the bridge: they translate human language into mathematical patterns that computers can compare, rank, and reason about.
+
+---
+
+## The Problem: Why Keyword Search Isn't Enough
+
+### A Real Example: Keyword Search Fails
+
+Imagine you're searching for documents about machine learning:
+
+- **Your query:** "machine learning"
+- **Document A:** "ML is teaching computers to learn from data"
+- **Document B:** "The teaching profession requires patience and dedication"
+
+A simple keyword search sees the word "teaching" in both and treats them as equally relevant. But obviously, Document A is about the right topic while Document B is completely irrelevant.
+
+**The problem:** Keywords don't capture meaning.
+
+### The Solution: Semantic Understanding
+
+With embeddings, the system understands the actual meaning:
+
+- Your query about machine learning becomes a specific numerical pattern
+- Document A's description gets a similar numerical pattern (they're about the same topic)
+- Document B's text gets a completely different numerical pattern (different topic)
+
+The system can now rank them correctly by comparing their numerical patterns, not just counting matching words.
+
+---
+
+## How Embeddings Work Conceptually
+
+### Step 1: Choose an Embedding Model
+
+Modern embedding models are neural networks trained on massive amounts of text. They've learned to capture semantic relationships through their training process.
+
+For semantic search and retrieval systems, you need embeddings that:
+
+- Capture semantic meaning well
+- Have consistent quality
+- Are reasonably fast and affordable
+- Work across different types of text
+
+### Step 2: Understanding Embedding Dimensions
+
+What do the numbers in an embedding represent? Each number (or "dimension") captures some aspect of meaning:
+
+- Some dimensions might capture topic (is this about technology? sports? cooking?)
+- Some capture sentiment (is this positive or negative?)
+- Some capture complexity (is this simple or advanced?)
+- Some capture linguistic patterns
+
+With 1536 dimensions, the model has many "perspectives" on the meaning of the text.
+
+### Step 3: Comparing Embeddings
+
+To find similar documents, you compare their embeddings mathematically. The closer the vectors point in the same direction, the more similar the meanings.
+
+This is measured as "similarity" on a scale from -1 to +1 (where +1 means identical direction, 0 means perpendicular, -1 means opposite).
+
+---
+
+## Why Embeddings Power Modern AI
+
+### Use Case 1: Semantic Search
+
+Instead of matching keywords, find documents with similar meaning. This is how modern search engines work.
+
+### Use Case 2: Recommendation Systems
+
+Find similar products, articles, or users based on semantic understanding. Netflix uses this to recommend shows.
+
+### Use Case 3: Question-Answering Systems
+
+Find the most relevant information to answer a user's question, by comparing the meaning of the question to available documents.
+
+### Use Case 4: Clustering & Organization
+
+Group similar texts together automatically, based on their numerical representations.
+
+---
+
+## Practical Considerations
+
+### Cost and Performance Trade-offs
+
+Different embedding models have different characteristics:
+
+- **Smaller models:** Faster, cheaper, less accurate
+- **Larger models:** Slower, more expensive, more accurate
+- **Specialized models:** Better for specific domains
+
+You must choose based on your needs. For many applications, a good balance between cost and quality is ideal.
+
+### Quality Concerns
+
+The quality of your embeddings depends on:
+
+- The base model's training
+- Whether it's appropriate for your domain
+- How you use it in your application
+
+### When to Use Embeddings
+
+Embeddings are powerful for finding related content, but they're just one tool. For some tasks (like exact matching), simple keyword search might be better. The key is understanding what problem you're solving.
+
+---
+
+## Key Takeaways
+
+**Simple definition:** Embeddings are lists of numbers that represent text meaning.
+
+**Core properties:**
+
 - Same text → Same embedding
 - Similar texts → Similar embeddings
 - Different texts → Different embeddings
-```
 
-### How Embeddings Capture Meaning
+**Why 1536 dimensions?** OpenAI chose this as the sweet spot—enough detail to capture nuanced meaning, but not so many as to be computationally expensive.
 
-```
-Embeddings are trained on massive text corpora.
-They learn:
-- Semantic relationships (\"king\" - \"man\" + \"woman\" ≈ \"queen\")
-- Topic associations (ML terms cluster together)
-- Similarity patterns (similar ideas → similar vectors)
+**The path forward:**
 
-Result: Numbers encode meaning
-```
+1. Create embeddings from your documents using OpenAI API
+2. Store vectors in a vector database (Pinecone)
+3. For user queries, create embeddings and search for similar vectors
+4. Use similarity scores to rank relevance
 
-### Dimensions Explained
+Consider implementing these functions in your project:
 
-**Why 1536 dimensions?**
-
-```
-More dimensions = More capacity for meaning
-
-1 dimension:    [0.5]              ← Can only represent 1 bit of info
-10 dimensions:  [0.1, 0.2, ...]    ← More nuanced
-1536 dimensions: [0.123, -0.456, ...] ← Very detailed
-
-OpenAI chose 1536 as sweet spot:
-- Enough dimensions to capture fine-grained meaning
-- Not so many as to be computationally expensive
-- Works well for semantic search
+```typescript
+// Core embedding operations
+function createEmbedding(text: string): Promise<number[]>;
+function compareEmbeddings(embedding1: number[], embedding2: number[]): number;
+function estimateTokens(text: string): number;
 ```
 
 ---
@@ -148,66 +169,54 @@ OpenAI chose 1536 as sweet spot:
 
 ### Pricing
 
-```
-OpenAI text-embedding-3-small:
-$0.02 per 1 million input tokens
+**OpenAI text-embedding-3-small:** $0.02 per 1 million input tokens
 
-For comparison:
-- GPT-3.5-turbo: $0.50 per 1M input tokens (25x more expensive)
-- text-embedding-3-large: $0.08 per 1M tokens (4x more)
-```
+**For comparison:**
+
+- GPT-3.5-turbo: $0.50 per 1M tokens (25x more expensive)
+- text-embedding-3-large: $0.08 per 1M tokens (4x more expensive)
+
+**Recommendation:** Use `text-embedding-3-small` for most RAG applications unless you need specialized quality.
 
 ### Token Counting
 
-```typescript
-// Rough formula: 4 characters ≈ 1 token
+A useful rule of thumb: **4 characters ≈ 1 token**
 
 Examples:
-- \"hello\" (5 chars) ≈ 2 tokens
-- \"machine learning\" (15 chars) ≈ 4 tokens
-- \"The quick brown fox...\" (50 chars) ≈ 13 tokens
 
-For accurate counts, use OpenAI's tokenizer
-But 4x rule is good enough for estimation
+- "hello" (5 chars) ≈ 2 tokens
+- "machine learning" (15 chars) ≈ 4 tokens
+- "The quick brown fox..." (50 chars) ≈ 13 tokens
+
+```typescript
+// Estimate tokens from text length
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
 ```
+
+For accurate counts, use OpenAI's tokenizer library. But this 4x rule is good enough for cost estimation.
 
 ### Cost Examples
 
-```
-100 chars (25 tokens)  ≈ $0.0000005 ← Negligible
-1000 chars (250 tokens) ≈ $0.000005 ← Still negligible
-10000 chars (2500 tokens) ≈ $0.00005 ← Very cheap
+Using OpenAI text-embedding-3-small at $0.02 per 1 million tokens:
 
-→ Embeddings are cheaper than LLM calls by 25x
-→ For RAG, embedding cost is rarely a bottleneck
-```
+- 100 chars (≈25 tokens) → ~$0.0000005 (negligible)
+- 1,000 chars (≈250 tokens) → ~$0.000005 (still negligible)
+- 10,000 chars (≈2,500 tokens) → ~$0.00005 (very cheap)
 
----
+**Key takeaway:** Embeddings are 25x cheaper than LLM calls. For RAG systems, embedding cost is rarely a bottleneck.
 
 ## Next Steps
 
-**After this task:**
+**After this tutorial:**
 
-1. Move to Task 02 to store embeddings in Pinecone
-2. Task 03 will combine embedding + storage
-3. Task 04 will use embeddings for search
+1. Move to Task 02 to learn about vector databases
+2. Task 03 will combine embedding + storage in practice
+3. Task 04 will use embeddings for semantic search
 
-**To deepen understanding:**
+**To deepen your understanding:**
 
-- Read OpenAI embedding docs: https://platform.openai.com/docs/guides/embeddings
-- Experiment with different texts and observe embedding similarity
-- Try text-embedding-3-large to see difference in quality
-
----
-
-## Tutorial Trigger
-
-- **embeddings.md** → Fill \"How\" section with OpenAI integration patterns
-
-Tutorial focus:
-
-- What = Embeddings: numerical representations of semantic meaning
-- Why = Enables semantic search (beyond keyword matching)
-- How = OpenAI API integration with singleton client pattern
-- Gotchas = Rate limits, token costs, dimension validation, error handling
-- Trade-offs = Cost vs quality (small vs large models)
+- Read [OpenAI embedding docs](https://platform.openai.com/docs/guides/embeddings)
+- Experiment: Create embeddings for similar and dissimilar texts, observe the similarity scores
+- Compare: Try text-embedding-3-large to see quality differences

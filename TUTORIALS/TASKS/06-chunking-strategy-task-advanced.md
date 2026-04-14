@@ -1,269 +1,502 @@
 ---
-notes: Read `../_meta_.md` as instruction before take task actions
+notes: Training tutorial - focus on chunking concepts and trade-offs
 ---
 
-# Task 06 — Chunking Strategy [advanced]
+# Tutorial 06 — Document Chunking Strategies
 
-## Goal
+## What You'll Learn
 
-Master document chunking strategies to optimize retrieval quality and cost, understanding the critical impact of chunk size and overlap on RAG system performance.
+In this tutorial, you'll understand:
 
----
-
-## Learning Outcomes
-
-After completing this task, you'll understand:
-
-- **Chunking fundamentals** — Why and how to split documents intelligently
-- **Strategy trade-offs** — Fixed size vs sliding window vs semantic chunking
-- **Quality impact** — How chunks affect retrieval and answer quality
-- **Cost implications** — Tokens, embeddings, and storage costs per strategy
-- **Evaluation methodology** — Measuring which strategy works best
-- **Metadata preservation** — Keeping document context through chunking
+- **Why chunking matters** — Impact on retrieval quality and cost
+- **Chunking fundamentals** — What makes a good chunk
+- **Size trade-offs** — Small vs medium vs large chunks
+- **Different chunking strategies** — Fixed, sliding, semantic
+- **Overlap and boundaries** — Why they matter
+- **Metadata preservation** — Keeping context through chunking
+- **Cost implications** — How chunking affects expenses
+- **Evaluation approaches** — Measuring which strategy works best
 - **Real-world patterns** — What works for different document types
-- **Optimization techniques** — Fine-tuning chunk size for your data
+- **Optimization techniques** — Fine-tuning for your specific data
 
 ---
 
-## Key Knowledge
+## The Core Problem: The Chunking Decision
 
-### 6.1 Chunk Size Trade-offs
+### Why Can't We Just Use Whole Documents?
 
-- **Small (128 tokens)** — High precision, many chunks, high cost
-- **Medium (512 tokens)** — Balanced, sweet spot for most cases
-- **Large (2048 tokens)** — Fewer chunks, risk of noise, cheaper
+After all, why not embed entire documents and retrieve them whole?
 
-### 6.2 Overlap Strategy
+**Problems with whole documents:**
 
-Sliding window with 50-100 token overlap. Without overlap, sentence boundaries break relevance. With overlap, same concept appears in multiple chunks → higher recall.
+1. **Size inefficiency** — Embedding a 10,000-word document costs the same as many smaller embeddings
+2. **Precision loss** — Retrieving entire document returns lots of irrelevant content mixed with relevant
+3. **Context bloat** — Forces your RAG system to process massive amounts of text
+4. **Off-target similarity** — Document might be 30% relevant to one paragraph, retrieved as 100% match
 
-### 6.3 Semantic Chunking
+**Example:**
+Your document is a 5,000-word research paper on machine learning. User asks "What is supervised learning?" You retrieve the entire 5,000-word paper, even though only one section (200 words) directly answers the question. RAG pipeline now drowns in irrelevant text.
 
-Split on topic boundaries, not arbitrary token count. Requires embedding each potential chunk boundary (expensive) but dramatically improves retrieval quality for long documents.
+### The Chunking Solution
 
-### 6.4 Token Counting
+Split documents into smaller, more focused pieces. Now:
 
-Estimate tokens: length ÷ 4 (English average). For accuracy, use `tiktoken` library. Cost example: 10K docs × 512 tokens ÷ 4 = 5M characters, embedding cost ~$0.50.
-
----
-
-## Requirements
-
-**Input:**
-
-- Documents (text, papers, documentation)
-- Document types (short, medium, long-form)
-- Quality metrics (what makes a "good" retrieval?)
-
-**Output:**
-
-- Chunks with optimal size, overlap, metadata
-- Strategy recommendation for your use case
-- Quality metrics showing strategy comparison
-- Cost analysis per strategy
-
-**Key parameters:**
-
-- Chunk size (default: 512 tokens)
-- Overlap (default: 100 tokens)
-- Strategy (fixed, sliding, semantic)
+1. **Only relevant sections** are retrieved
+2. **Reduced noise** in context
+3. **Better cost efficiency** — smaller vectors
+4. **Improved precision** — answers based on focused context
 
 ---
 
-## Why Chunking Matters
+## Chunking Fundamentals
 
-### The Problem: Wrong Chunk Size = Bad Retrieval
+### What is a "Good" Chunk?
 
-```
-Strategy A: Chunks too small (100 tokens)
-- Document: "Machine learning is teaching computers..."
-- Chunk 1: "Machine learning is teaching"
-- Chunk 2: "computers to learn from data"
-- Problem: Chunks lack context, can't answer full questions
-- Result: Retrieved chunks are useless
+A good chunk:
 
-Strategy B: Chunks too large (2000 tokens)
-- Problem: Entire document as 1 chunk
-- Issue: Low precision (retrieves too much noise)
-- Example: Question about one topic retrieves irrelevant sections
-- Result: LLM drowns in irrelevant text
+- Contains complete thought or concept
+- Is self-contained (readable without surrounding context)
+- Balances context with focus
+- Preserves original meaning
+- Relates logically to both surrounding chunks
 
-Strategy C: Chunks just right (512 tokens)
-- Problem: Found the sweet spot
-- Benefit: Contains enough context for understanding
-- Benefit: Focused enough for precision
-- Result: Good retrieval quality AND manageable context
-```
+### Where to Split?
 
-### The Solution: Strategic Chunking
+Different document types have natural boundaries:
 
-```
-Test different strategies:
-1. Fixed-size: Simple, fast, consistent
-2. Sliding window: Overlap prevents boundary artifacts
-3. Semantic: Chunks based on topic boundaries
+**Written documents:**
 
-Measure retrieval quality:
-- MRR (Mean Reciprocal Rank)
-- nDCG (Normalized Discounted Cumulative Gain)
+- Paragraphs
+- Sections
+- Subsections
+- Sentences
+- Character length (when nothing else works)
 
-Choose strategy that maximizes quality within cost budget
-```
+**Code:**
+
+- Functions
+- Classes
+- Methods
+- Code blocks
+- Comment boundaries
+
+**Structured data:**
+
+- Records
+- Entries
+- Semantic blocks
+- Definition groups
+
+The goal: Respect natural boundaries when possible rather than cutting arbitrarily.
 
 ---
 
 ## Chunking Strategies
 
-### Strategy 1: Fixed-Size Chunking
+### Strategy 1: Fixed-Size Chunking (Pure Character Count)
 
-**Definition:** Split documents into chunks of exact size, no overlap
+Split document every N characters or tokens, regardless of meaning.
+
+**Example:** "Split every 500 tokens"
+
+**Pros:**
+
+- Simple to implement
+- Predictable output
+- Minimal computation
+
+**Cons:**
+
+- May cut sentences in half
+- Loses semantic meaning
+- Can create useless chunks
+- Loses natural structure
+
+**When to use:** Quick baseline, simple documents, when you don't know the content structure
+
+**Example breakdown:**
 
 ```
-Document:
-"Machine learning is a subset of AI that enables computers to learn from data.
-Deep learning uses neural networks. Transformers power modern NLP."
-
-Fixed chunks (30 chars, no overlap):
-┌─────────────────────────────────┐
-│ Machine learning is a sub       │
-├─────────────────────────────────┤
-│ set of AI that enables co       │
-├─────────────────────────────────┤
-│ mputers to learn from data.     │
-└─────────────────────────────────┘
-
-Pros: ✅ Simple, fast, deterministic
-Cons: ❌ No context at boundaries, misses structure
+Document: "Chapter 1: Introduction to ML. ML is..."
+Chunk 1: "Chapter 1: Introduction to ML. ML is teaching computers..."
+Chunk 2: "...from data through examples. Background: Historical..." (mid-sentence!)
 ```
 
-**Implementation:**
+### Strategy 2: Sliding Window (Fixed Size with Overlap)
+
+Split into chunks of fixed size, but overlap between chunks.
+
+**Example:** "Split 512 tokens at a time, with 100 token overlap"
+
+**How it works:**
+
+```
+Tokens:  [1...100][101...612] overlap [513...1024][925...1436]
+         Chunk 1      Chunk 2        etc.
+```
+
+The overlap ensures that concepts appearing at chunk boundaries exist in multiple chunks, improving recall.
+
+**Pros:**
+
+- Better recall (concepts in multiple chunks)
+- Still simple to implement
+- Respects token boundaries
+- Works for most use cases
+
+**Cons:**
+
+- Still ignores semantic meaning
+- May duplicate retrieval
+- Still loses natural structure
+
+**When to use:** Most practical applications, good balance of simplicity and quality
+
+### Strategy 3: Semantic Chunking (Context-Aware)
+
+Split at topic/concept boundaries, not arbitrary boundaries.
+
+**How it works (conceptually):**
+
+1. Identify natural boundaries (paragraph breaks, section headers, topic changes)
+2. Split at those boundaries
+3. Adjust size if chunks are too small or large
+
+**Pros:**
+
+- Respects document structure
+- Maintains semantic integrity
+- Better retrieval quality (chunks stay focused)
+- Most natural for users
+
+**Cons:**
+
+- More complex to implement
+- Requires understanding document structure
+- Different per document type
+- Potentially more expensive
+
+**When to use:** High-quality systems, when document structure is consistent, when quality matters more than cost
+
+---
+
+## The Chunk Size Trade-off
+
+### Small Chunks (100-200 tokens)
+
+**Characteristics:**
+
+- Very focused, specific concepts
+- Lots of chunks per document
+- High precision, low noise
+
+**Pros:**
+
+- Very precise retrieval
+- Minimal irrelevant context
+- Cheaper per-token basis? Sort of...
+
+**Cons:**
+
+- Many chunks = many embeddings = high cost
+- Longer retrieval time
+- May lack context (question answerers need surrounding context)
+- Can be too fragmented
+
+**When to use:** Short, factual documents like FAQs or knowledge bases
+
+### Medium Chunks (300-600 tokens)
+
+**Characteristics:**
+
+- Balanced focus
+- Reasonable chunk count
+- Good precision and context
+
+**Pros:**
+
+- Good balance of cost and quality
+- Chunks contain enough context
+- Retrieval results are focused
+- Standard choice for most applications
+
+**Cons:**
+
+- May still include some noise
+- Manual tuning might improve it
+
+**When to use:** Default choice for most use cases
+
+### Large Chunks (1000+ tokens)
+
+**Characteristics:**
+
+- Multiple concepts per chunk
+- Few chunks per document
+- Lower precision, more context
+
+**Pros:**
+
+- Fewer chunks = fewer embeddings = lower cost
+- Chunks have lots of surrounding context
+- Good for long-form answers
+
+**Cons:**
+
+- Retrieved results include lots of irrelevant context
+- RAG pipeline must process more text
+- May confuse LLM with mixed concepts
+- Sometimes less accurate
+
+**When to use:** Long-form documents where full context is needed, when cost is critical constraint
+
+---
+
+## The Overlap Question
+
+### Overlap Purpose
+
+When you split a document at a boundary, a concept sometimes straddles the boundary:
+
+```
+Chunk 1: "...machine learning is teaching computers..."
+Chunk 2: "...to learn from data. This is called supervised learning..."
+Problem: The concept "machine learning" is only in chunk 1,
+         but a query about "computer learning" might not retrieve chunk 2.
+```
+
+With overlap:
+
+```
+Chunk 1: "...machine learning is teaching computers to learn from data..."
+Chunk 2: "...teach computers to learn from data. This is called supervised..." (overlaps!)
+Now: Same concept appears in both chunks!
+```
+
+### Overlap Strategy
+
+**Recommended:** 50-100 token overlap
+
+**Why:**
+
+- Captures concepts that span chunk boundaries
+- Improves recall (fewer missed documents)
+- Doesn't waste too much space on duplication
+- Good balance for most document types
+
+---
+
+## Preserving Metadata Through Chunking
+
+### The Problem
+
+When you chunk a document, you create multiple vectors. Each needs metadata:
+
+```
+Original:
+- Document ID: "doc_001"
+- Title: "Machine Learning Basics"
+- Author: "Jane"
+- Source: "training_docs"
+
+After chunking into 5 chunks:
+- Chunk 1 needs: same metadata + "chunk_number: 1"
+- Chunk 2 needs: same metadata + "chunk_number: 2"
+- etc.
+```
+
+### What Metadata to Keep
+
+**Essential:**
+
+- Document ID (can be traced back to full document)
+- Chunk number (which part of the document is this)
+- Original text (for user retrieval)
+
+**Helpful:**
+
+- Source (where did this document come from?)
+- Document title (context for user)
+- Author/Date (attribution, freshness)
+- Category/Tags (filtering, domain knowledge)
+
+### Practical Impact
+
+Without metadata:
+
+```
+Retrieval: Returns vector 0.89 similarity score
+User: "Where did this come from? Can I see the original?"
+System: *silence* (no information)
+```
+
+With metadata:
+
+```
+Retrieval: Returns vector 0.89, from doc_001 chunk 3, titled "ML Basics"
+User: "Oh, that's from the training document. Got it!"
+```
+
+---
+
+## Cost and Quality Considerations
+
+### Cost Factors
+
+**Embeddings:**
+
+- Proportional to total tokens: 1000 tokens = embeddings cost, regardless of chunk size
+- Smaller chunks (more of them) = same total cost
+- **But:** Handling, retrieval, storage costs vary
+
+**Storage:**
+
+- More chunks = more metadata storage
+- Small difference unless you have millions of chunks
+
+**Retrieval:**
+
+- More chunks = more potential to retrieve (good)
+- More context to process (bad)
+- Slight cost increase but usually worth it
+
+### Quality Impact
+
+The biggest impact: Retrieval quality
+
+**Too small:** Chunks lack context for question answering
+**Too large:** Chunks include irrelevant noise
+**Just right:** Maximum relevant information, minimum noise
+
+---
+
+## Practical Optimization
+
+### Measuring Success
+
+To evaluate your chunking strategy:
+
+1. **Create test queries** (5-10 meaningful questions)
+2. **For each chunk size/strategy**, measure:
+   - Retrieval precision (are retrieved chunks relevant?)
+   - Retrieval recall (do we find all relevant chunks?)
+   - End-to-end answer quality (LLM's final answer)
+3. **Compare** to find the best strategy for your data
+
+### Experimentation Flow
+
+1. **Start with medium chunks (512 tokens)** — Good baseline
+2. **Test with real queries** — Does it work?
+3. **If precision too low** → Increase chunk size or improve chunking strategy
+4. **If recall too low** → Decrease chunk size or add overlap
+5. **If cost too high** → Try larger chunks
+6. **If quality too low** → Try semantic chunking
+
+---
+
+## Document-Type Specific Guidance
+
+### Scientific Papers
+
+- Chunk at section boundaries
+- Preserve abstract separately
+- Medium chunks (400-600 tokens)
+- High overlap (100 tokens)
+
+### Technical Documentation
+
+- Chunk at section/subsection boundaries
+- Keep examples with explanations
+- Medium chunks (350-500 tokens)
+- Medium overlap (50 tokens)
+
+### Long-form Content (Blog, Books)
+
+- Chunk at paragraph boundaries + heading boundaries
+- Larger chunks (600-1000 tokens)
+- Lower overlap (50 tokens)
+
+### FAQs / Knowledge Bases
+
+- Each Q&A is one chunk (naturally)
+- Vary by content length
+- Minimal overlap (just in case)
+
+---
+
+## Key Takeaways
+
+Test different strategies:
+
+1. Fixed-size: Simple, fast, consistent
+2. Sliding window: Overlap prevents boundary artifacts
+3. Semantic: Chunks based on topic boundaries
+
+Measure retrieval quality:
+
+- MRR (Mean Reciprocal Rank)
+- nDCG (Normalized Discounted Cumulative Gain)
+
+Choose strategy that maximizes quality within cost budget
+
+---
+
+## Implementation Guide
+
+### Core Chunking Functions
 
 ```typescript
+// Simple fixed-size chunking (good for most cases)
 function fixedSizeChunks(
   text: string,
-  chunkSize: number = 512, // tokens, ~2000 characters
-): string[] {
-  const chunks: string[] = [];
-  let currentChunk = "";
-  const words = text.split(/\s+/);
+  chunkSize?: number, // Default: 512 tokens (~2000 chars)
+): string[];
 
-  for (const word of words) {
-    if ((currentChunk + " " + word).length > chunkSize * 4) {
-      // Approximate: 4 characters per token
-      chunks.push(currentChunk.trim());
-      currentChunk = word;
-    } else {
-      currentChunk += " " + word;
-    }
-  }
-
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
-}
-
-// Usage
-const chunks = fixedSizeChunks(document, 512);
-console.log(`Created ${chunks.length} chunks`);
-console.log(
-  `Avg chunk size: ${chunks.reduce((a, c) => a + c.length, 0) / chunks.length} chars`,
-);
-```
-
-**Best for:** Homogeneous documents, structured data, initial testing
-
----
-
-### Strategy 2: Sliding Window Chunking
-
-**Definition:** Fixed-size chunks with overlap to preserve context
-
-```
-Document:
-"Machine learning is a subset of AI that enables computers to learn from data.
-Deep learning uses neural networks. Transformers power modern NLP."
-
-Sliding chunks (30 chars, 10 char overlap):
-┌─────────────────────────────────┐
-│ Machine learning is a sub       │ ← Chunk 1
-│        ↓ (overlap 10 chars)
-│        et of AI that enables co │ ← Chunk 2
-│                    ↓ (overlap)
-│                    mputers to learn │ ← Chunk 3
-└─────────────────────────────────┘
-
-Pros: ✅ Context preserved at boundaries
-Cons: ❌ More chunks = higher cost
-```
-
-**Implementation:**
-
-```typescript
+// Overlapping chunks preserve context at boundaries
 function slidingWindowChunks(
   text: string,
-  chunkSize: number = 512, // tokens
-  overlap: number = 100, // tokens (20% overlap)
-): string[] {
-  const chunks: string[] = [];
-  const words = text.split(/\s+/);
+  chunkSize?: number, // Default: 512 tokens
+  overlap?: number, // Default: 100 tokens (20% overlap)
+): string[];
 
-  let start = 0;
-  const step = chunkSize - overlap;
-
-  while (start < words.length) {
-    const end = Math.min(start + chunkSize, words.length);
-    chunks.push(words.slice(start, end).join(" "));
-
-    if (end === words.length) break;
-    start += step;
-  }
-
-  return chunks;
-}
-
-// Usage
-const chunks = slidingWindowChunks(document, 512, 100);
-console.log(`Created ${chunks.length} chunks with 100-token overlap`);
-console.log(
-  `Cost multiplier: ${(chunks.length / fixedSizeChunks(document).length).toFixed(2)}x`,
-);
+// Topic-aware chunking (more sophisticated)
+function semanticChunks(
+  text: string,
+  minChunkSize?: number, // Don't create tiny chunks
+): string[];
 ```
 
-**Best for:** Text documents, papers, continuous prose
+### Strategy Comparison
 
----
+| Strategy   | Complexity | Quality   | Cost   | Best For                  |
+| ---------- | ---------- | --------- | ------ | ------------------------- |
+| Fixed-size | Low        | Okay      | Low    | Initial testing, baseline |
+| Sliding    | Low        | Good      | Medium | Most text documents       |
+| Semantic   | High       | Excellent | High   | High-quality systems      |
 
-### Strategy 3: Semantic Chunking
+**Recommendation:** Start with sliding window (good balance of simplicity and quality).
 
-**Definition:** Split based on topic/semantic boundaries, not fixed size
+### Document-Specific Guidance
 
-```
-Document:
-"Machine learning is a subset of AI.
-[Section 1: Definition]
+**Scientific papers:**
 
-Deep learning uses neural networks.
-[Section 2: Implementation]
+- Semantic chunking by section (abstract, intro, methods, results, conclusion)
+- Keeps each section focused on specific topic
 
-Transformers power modern NLP.
-[Section 3: Application]"
+**Code:**
 
-Semantic chunks (based on sections):
-┌─────────────────────────────────┐
-│ Machine learning is a subset of AI │ ← Chunk 1 (definition)
-├─────────────────────────────────┤
-│ Deep learning uses neural networks │ ← Chunk 2 (implementation)
-├─────────────────────────────────┤
-│ Transformers power modern NLP   │ ← Chunk 3 (application)
-└─────────────────────────────────┘
+- Split at method/function boundaries
+- Respects code structure naturally
 
-Pros: ✅ Coherent chunks, topically consistent
-Cons: ❌ Complex, variable size, needs topic detection
-```
+**Knowledge bases/FAQs:**
 
-**Implementation (simple variant using headers):**
+- One Q&A per chunk (naturally semantic)
+- Vary size based on content
+
+**Web content:**
+
+- Use HTML structure (div, article tags) as boundaries
+- Preserve semantic hierarchy
 
 ```typescript
 function semanticChunksByHeaders(text: string): string[] {
@@ -356,321 +589,90 @@ Semantic strategy:
 
 ---
 
-## Implementation: Testing All Strategies
+## Implementation: Core Functions
 
-### Step 1: Create Chunking Service
-
-```typescript
-// src/services/chunking.ts
-
-export interface ChunkingStrategy {
-  name: string;
-  chunkSize: number;
-  overlap?: number;
-  chunk(text: string): string[];
-}
-
-export class FixedSizeStrategy implements ChunkingStrategy {
-  name = "fixed-size";
-
-  constructor(public chunkSize: number = 512) {}
-
-  chunk(text: string): string[] {
-    const words = text.split(/\s+/);
-    const chunks: string[] = [];
-    let current = "";
-
-    for (const word of words) {
-      if ((current + " " + word).length > this.chunkSize * 4) {
-        chunks.push(current.trim());
-        current = word;
-      } else {
-        current += " " + word;
-      }
-    }
-
-    if (current.trim()) chunks.push(current.trim());
-    return chunks;
-  }
-}
-
-export class SlidingWindowStrategy implements ChunkingStrategy {
-  name = "sliding-window";
-
-  constructor(
-    public chunkSize: number = 512,
-    public overlap: number = 100,
-  ) {}
-
-  chunk(text: string): string[] {
-    const words = text.split(/\s+/);
-    const chunks: string[] = [];
-    const step = this.chunkSize - this.overlap;
-
-    for (let i = 0; i < words.length; i += step) {
-      const end = Math.min(i + this.chunkSize, words.length);
-      chunks.push(words.slice(i, end).join(" "));
-      if (end === words.length) break;
-    }
-
-    return chunks;
-  }
-}
-
-// Usage
-const strategies: ChunkingStrategy[] = [
-  new FixedSizeStrategy(512),
-  new SlidingWindowStrategy(512, 100),
-];
-
-for (const strategy of strategies) {
-  const chunks = strategy.chunk(document);
-  console.log(`${strategy.name}: ${chunks.length} chunks`);
-}
-```
-
-### Step 2: Evaluate Strategies
+Implement these chunking strategies:
 
 ```typescript
-// src/services/chunking-evaluation.ts
+// Simple fixed-size chunking
+function fixedSizeChunks(text: string, chunkSize?: number): string[];
 
-export interface ChunkingMetrics {
-  strategyName: string;
-  chunkCount: number;
-  avgChunkSize: number;
-  minChunkSize: number;
-  maxChunkSize: number;
-  totalSize: number;
-  embeddingCost: number;
-  retrievalQuality?: number; // Will fill after testing
-}
-
-export function evaluateStrategy(
-  strategy: ChunkingStrategy,
+// Better: overlapping chunks
+function slidingWindowChunks(
   text: string,
-): ChunkingMetrics {
-  const chunks = strategy.chunk(text);
-  const sizes = chunks.map((c) => c.length);
-  const totalSize = sizes.reduce((a, b) => a + b, 0);
-  const avgTokens = totalSize / 4; // Rough: 4 chars per token
-  const embeddingCost = chunks.length * 0.000002; // $0.02 per 1M tokens
+  chunkSize?: number,
+  overlap?: number,
+): string[];
 
-  return {
-    strategyName: strategy.name,
-    chunkCount: chunks.length,
-    avgChunkSize: Math.round(totalSize / chunks.length),
-    minChunkSize: Math.min(...sizes),
-    maxChunkSize: Math.max(...sizes),
-    totalSize,
-    embeddingCost,
-  };
-}
+// Best: topic-aware semantic chunking
+function semanticChunks(text: string, minChunkSize?: number): string[];
 
-// Usage
-const results = strategies.map((s) => evaluateStrategy(s, document));
-console.table(results);
+// Evaluate strategy effectiveness
+function evaluateStrategy(
+  strategy: ChunkingMethod,
+  text: string,
+): ChunkingMetrics;
 ```
 
----
+**Testing approach:**
 
-## Testing & Comparison
-
-### Test 1: Basic Chunking
-
-```bash
-# Create test document
-cat > test-document.txt << 'EOF'
-Machine learning is a subset of artificial intelligence that enables
-systems to learn and improve from experience. Deep learning, a subfield
-of machine learning, uses neural networks with multiple layers.
-Transformers represent a breakthrough in neural network architecture.
-EOF
-
-# Test each strategy
-node -e "
-const strategies = [
-  { name: 'fixed-512', chunks: fixedSizeChunks(doc, 512) },
-  { name: 'sliding-512-100', chunks: slidingWindowChunks(doc, 512, 100) },
-];
-
-strategies.forEach(s => {
-  console.log(\`\${s.name}: \${s.chunks.length} chunks\`);
-});
-"
-```
-
-### Test 2: Cost Comparison
-
-```typescript
-// Create large document
-const largeDoc = document.repeat(50); // ~50K tokens
-
-const metrics = strategies.map((s) => evaluateStrategy(s, largeDoc));
-
-console.log("\n📊 Cost Comparison:");
-metrics.forEach((m) => {
-  console.log(`${m.strategyName}:`);
-  console.log(`  Chunks: ${m.chunkCount}`);
-  console.log(`  Cost: $${m.embeddingCost.toFixed(6)}`);
-});
-
-// Find cheapest
-const cheapest = metrics.reduce((a, b) =>
-  a.embeddingCost < b.embeddingCost ? a : b,
-);
-console.log(`\n💰 Cheapest: ${cheapest.strategyName}`);
-```
-
-### Test 3: Quality Evaluation
-
-```typescript
-// Test with actual retrieval
-const testQuestions = [
-  "What is machine learning?",
-  "How do neural networks work?",
-  "Explain transformers",
-];
-
-for (const strategy of strategies) {
-  console.log(`\n📊 Testing ${strategy.name}:`);
-
-  const chunks = strategy.chunk(document);
-
-  for (const question of testQuestions) {
-    const relevantChunks = findRelevant(chunks, question);
-    const quality = evaluateRetrieval(question, relevantChunks);
-
-    console.log(`  Q: "${question}"`);
-    console.log(`  Relevant chunks: ${relevantChunks.length}`);
-    console.log(`  Quality score: ${quality.toFixed(2)}`);
-  }
-}
-```
+1. Split document using each strategy
+2. Measure: number of chunks, average size, total cost
+3. Use Tutorial 07 evaluation metrics on real queries
+4. Pick winner (best quality within budget)
 
 ---
 
 ## Real-World Patterns
 
-### Pattern 1: Adaptive Chunk Size
+**Adaptive chunk size:**
 
-```typescript
-function adaptiveChunkSize(documentLength: number): number {
-  // Longer documents need smaller chunks for precision
-  if (documentLength < 1000) return 256; // Short: 256 tokens
-  if (documentLength < 5000) return 512; // Medium: 512 tokens
-  if (documentLength < 20000) return 768; // Long: 768 tokens
-  return 1024; // Very long: 1024 tokens
-}
+- Short docs (<1K tokens): 256-token chunks
+- Medium docs (5K tokens): 512-token chunks
+- Long docs (20K tokens): 768-token chunks
+- Very long docs: 1024-token chunks
 
-// Usage
-const optimalSize = adaptiveChunkSize(document.length);
-const chunks = fixedSizeChunks(document, optimalSize);
-```
+**Overlap guidance:**
 
-### Pattern 2: Overlap Based on Domain
+- Technical/legal: 20-30% overlap (preserve context)
+- General text: 15% overlap (balanced)
+- Fiction: 10% overlap (natural breaks exist)
 
-```typescript
-function optimalOverlap(domain: string): number {
-  const overlapPercentages = {
-    technical: 0.2, // 20% overlap (good for coherence)
-    legal: 0.3, // 30% overlap (preserve exact language)
-    fiction: 0.1, // 10% overlap (natural breaks exist)
-    default: 0.15, // 15% overlap (balanced)
-  };
-
-  return overlapPercentages[domain] || overlapPercentages.default;
-}
-```
-
-### Pattern 3: Metadata Attachment
-
-```typescript
-interface Chunk {
-  id: string;
-  text: string;
-  startIndex: number;
-  endIndex: number;
-  documentId: string;
-  chunkNumber: number;
-}
-
-function chunkWithMetadata(
-  text: string,
-  documentId: string,
-  strategy: ChunkingStrategy,
-): Chunk[] {
-  const chunks = strategy.chunk(text);
-  const result: Chunk[] = [];
-  let position = 0;
-
-  chunks.forEach((chunkText, index) => {
-    result.push({
-      id: `${documentId}-chunk-${index}`,
-      text: chunkText,
-      startIndex: position,
-      endIndex: position + chunkText.length,
-      documentId,
-      chunkNumber: index,
-    });
-    position += chunkText.length + 1; // +1 for space
-  });
-
-  return result;
-}
-```
+**Metadata preservation:**
+Each chunk should retain: document ID, chunk number, start/end position
 
 ---
 
 ## Common Issues & Solutions
 
-| Issue                      | Cause                     | Solution                            |
-| -------------------------- | ------------------------- | ----------------------------------- |
-| "Chunks too small"         | Small chunk size          | Increase to 512+ tokens             |
-| "Retrieval misses context" | No overlap                | Add 10-20% overlap                  |
-| "Cost too high"            | Many small chunks         | Increase chunk size or use semantic |
-| "Chunks are incoherent"    | Fixed size cuts mid-topic | Use semantic or sliding window      |
-| "Some chunks very large"   | Variable strategy         | Enforce max size limit              |
+| Problem                  | Cause                     | Fix                     |
+| ------------------------ | ------------------------- | ----------------------- |
+| Chunks too small         | Small chunk size          | Increase to 512+ tokens |
+| Retrieval misses context | No overlap                | Add 15-20% overlap      |
+| Cost too high            | Many small chunks         | Increase chunk size     |
+| Incoherent chunks        | Fixed size cuts mid-topic | Use sliding or semantic |
 
 ---
 
-## Constraints
+## Quick Start Guide
 
-- Fixed-size strategy doesn't preserve semantic boundaries
-- Sliding window increases cost (more chunks)
-- Semantic strategy needs structured documents
-- Chunk size affects both cost and quality
-- No one-size-fits-all strategy
+**Recommended approach (good balance):**
 
----
+1. **Start:** Use sliding window with 512-token chunks, 100-token overlap
+2. **Measure:** Use Task 07 metrics on 5-10 test questions
+3. **Adjust:** If quality too low, try semantic. If cost too high, increase chunk size
+4. **Finalize:** Document your chosen strategy and rationale
 
-## Optimization Checklist
+**Cost estimation:**
 
-- [ ] Test 3+ chunk sizes (256, 512, 768, 1024)
-- [ ] Measure retrieval quality for each
-- [ ] Calculate cost per strategy
-- [ ] Benchmark on real questions
-- [ ] A/B test in production if possible
-- [ ] Document chosen strategy and rationale
-- [ ] Set up monitoring for retrieval quality
+- Fixed 512-token chunks: baseline cost
+- Sliding window (20% overlap): ~1.2x baseline
+- Semantic chunking: ~0.8x baseline (fewer chunks)
 
 ---
 
 ## Next Steps
 
-1. **After this task:** Move to Task 05 (RAG) using your optimal chunking strategy
-2. **Quality improvement:** Use Task 07 (Evaluation) to measure impact
-3. **Advanced:** Combine with Task 08 (Improve Retrieval) for better results
-
----
-
-## Tutorial Trigger
-
-- **rag.md** → Add "Chunking Considerations" section
-
-Tutorial focus:
-
-- What = Chunking strategies and their trade-offs
-- Why = Chunk quality directly impacts retrieval and answer quality
-- How = Implement and evaluate different strategies
-- Gotchas = Fixed size too small/large, no overlap = lost context
-- Trade-offs = Cost vs quality, complexity vs results
+1. **After this tutorial:** Move to Task 07 to measure chunk quality
+2. **Then:** Apply optimal chunks in Task 05 (RAG)
+3. **Advanced**: Combine with Task 08 optimizations
