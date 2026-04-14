@@ -1,0 +1,380 @@
+{
+  "info": {
+    "name": "Pinecone AI Starter - Task 08 Retrieval Optimization",
+    "description": "Collection for testing advanced retrieval optimization endpoints (Task 08)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "task-08-optimization"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "auth_token",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{auth_token}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Environment Variables",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Base URL - Update this to your local Firebase emulator URL",
+                  "// Example: http://localhost:5001/pinecone-ai-starter/us-central1",
+                  "pm.variables.set('baseUrl', pm.environment.get('baseUrl') || 'http://localhost:5001/YOUR_PROJECT/us-central1');",
+                  "pm.variables.set('auth_token', pm.environment.get('auth_token') || 'test-token');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/optimization/doc",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "doc"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Query Expansion",
+      "item": [
+        {
+          "name": "Generate Query Variants",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Response has variants', function() {",
+                  "  pm.expect(jsonData.variants).to.be.an('array');",
+                  "  pm.expect(jsonData.variants.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "console.log('Query variants generated:', jsonData.variants);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "auth_token",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"question\": \"What is machine learning and how do neural networks work?\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/optimization/query-expansion",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "query-expansion"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Optimized Retrieval",
+      "item": [
+        {
+          "name": "Retrieve with All Optimizations (Expansion + Fusion + Reranking)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Response has results', function() {",
+                  "  pm.expect(jsonData.results).to.be.an('array');",
+                  "  pm.expect(jsonData.resultCount).to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('Metrics are present', function() {",
+                  "  pm.expect(jsonData.metrics).to.have.all.keys('totalTime', 'averageScore', 'scores', 'techniques');",
+                  "});",
+                  "",
+                  "console.log('Retrieval completed in', jsonData.metrics.totalTime, 'ms');",
+                  "console.log('Average score:', jsonData.metrics.averageScore);",
+                  "console.log('Techniques used:', jsonData.metrics.techniques);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "auth_token",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"question\": \"How do neural networks learn from data?\", \"useExpansion\": true, \"useFusion\": true, \"useReranking\": true, \"topK\": 3}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/optimization/retrieve",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "retrieve"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Retrieve with Only Query Expansion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Using only query expansion', function() {",
+                  "  pm.expect(jsonData.metrics.techniques).to.include('query_expansion');",
+                  "  pm.expect(jsonData.metrics.techniques).to.not.include('fusion');",
+                  "  pm.expect(jsonData.metrics.techniques).to.not.include('reranking');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "auth_token",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"question\": \"What is embeddings?\", \"useExpansion\": true, \"useFusion\": false, \"useReranking\": false, \"topK\": 3}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/optimization/retrieve",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "retrieve"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Retrieve with Only Reranking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Using only reranking', function() {",
+                  "  pm.expect(jsonData.metrics.techniques).to.include('reranking');",
+                  "  pm.expect(jsonData.metrics.techniques).to.not.include('query_expansion');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "auth_token",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"question\": \"Explain the concept of vector embeddings\", \"useExpansion\": false, \"useFusion\": false, \"useReranking\": true, \"topK\": 3}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/optimization/retrieve",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "retrieve"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "A/B Testing",
+      "item": [
+        {
+          "name": "Compare Baseline vs Optimized",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Test results include both variants', function() {",
+                  "  const variants = jsonData.testResults.map(r => r.variant);",
+                  "  pm.expect(variants).to.include('baseline');",
+                  "  pm.expect(variants).to.include('optimized');",
+                  "});",
+                  "",
+                  "pm.test('Analysis is present', function() {",
+                  "  pm.expect(jsonData.analysis).to.have.all.keys('qualityImprovement', 'latencyIncrease', 'costIncrease', 'baseline', 'optimized', 'recommended', 'recommendation');",
+                  "});",
+                  "",
+                  "const analysis = jsonData.analysis;",
+                  "console.log('Quality Improvement:', analysis.qualityImprovement, '%');",
+                  "console.log('Latency Increase:', analysis.latencyIncrease, '%');",
+                  "console.log('Cost Increase:', analysis.costIncrease, '%');",
+                  "console.log('Recommended:', analysis.recommended);",
+                  "console.log('Recommendation:', analysis.recommendation);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "auth_token",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"question\": \"What is retrieval augmented generation?\", \"topK\": 3}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/optimization/ab-test",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "ab-test"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Documentation",
+      "item": [
+        {
+          "name": "View API Documentation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "pm.test('Documentation is complete', function() {",
+                  "  pm.expect(jsonData.documentation).to.have.all.keys('endpoints', 'techniques', 'decision_tree', 'postman_environment');",
+                  "  pm.expect(jsonData.documentation.endpoints.length).to.be.above(0);",
+                  "  pm.expect(jsonData.documentation.techniques.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "auth_token",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/optimization/doc",
+              "host": ["{{baseUrl}}"],
+              "path": ["optimization", "doc"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5001/YOUR_PROJECT/us-central1",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "test-token",
+      "type": "string"
+    }
+  ]
+}

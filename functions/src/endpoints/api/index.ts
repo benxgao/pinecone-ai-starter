@@ -10,6 +10,7 @@ import {
   healthCheckHandler,
 } from './status';
 import ragRouter from './rag';
+import optimizationRouter from './optimization';
 
 const router = createRouter();
 
@@ -152,5 +153,26 @@ router.post('/pinecone/ensure', ensureIndexHandler);
   }'
  */
 router.use('/rag', ragRouter);
+
+// ===== TASK 08: RETRIEVAL OPTIMIZATION ENDPOINTS =====
+
+/**
+ * Optimized retrieval with query expansion, fusion, and reranking
+ * Use for improved quality when baseline search is insufficient
+ *
+ * Sample request:
+ *
+  curl -X POST http://localhost:5001/YOUR_PROJECT/us-central1/optimization/retrieve \
+  -H "Content-Type: application/json" \
+  -H "auth_token: some_value" \
+  -d '{
+    "question": "What is machine learning?",
+    "useExpansion": true,
+    "useFusion": true,
+    "useReranking": true,
+    "topK": 3
+  }'
+ */
+router.use('/optimization', optimizationRouter);
 
 export default router;
