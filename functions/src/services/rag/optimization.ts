@@ -2,19 +2,6 @@ import logger from '../firebase/logger';
 import { querySimilar, RetrievalResult } from './retrieval';
 
 /**
- * The Real Problem
-    RRF is a rank-fusion algorithm designed for scenarios where:
-
-    You have scores from different systems that aren't comparable
-    You want to combine ranking orders without normalizing
-    But in your case:
-
-    You already have comparable scores (cosine similarity from embedding)
-    RRF replaces good scores with much smaller ones
-    It's the wrong tool for the job
- */
-
-/**
  * Retrieval Optimization Service
  * Implements advanced retrieval techniques to improve RAG answer quality
  * Includes: query expansion, fusion, native reranking, and A/B testing
@@ -84,105 +71,76 @@ export async function expandQuery(question: string): Promise<string[]> {
   return Array.from(queries);
 }
 
-// ============ RECIPROCAL RANK FUSION ============
+// ============ RESULT FUSION WITH CONSENSUS BOOSTING ============
 
 /**
- * Reciprocal Rank Fusion (RRF)
- * Combines results from multiple retrievals without needing to normalize scores
+ * Fuse results from multiple query variants using consensus boosting
  *
- * Formula: Score = sum(1 / (k + rank))
- * where k=60 is the standard constant that prevents outliers from dominating
+ * Strategy: Blend consensus detection with original semantic scores
+ * - Documents appearing in multiple query results = high relevance (consensus)
+ * - Original embedding scores preserved but boosted by consensus count
+ * - Combines multi-query agreement benefits with embedding quality
  *
- * Benefits:
- * - Combines diverse retrieval methods (query variants, different index searches)
- * - Doesn't require normalized scores
- * - Proven effective in information retrieval research
+ * Consensus Boost: score *= (1 + (appearances - 1) * 0.2)
+ * - 1 appearance: 1.0x (no boost)
+ * - 2 appearances: 1.2x (20% boost)
+ * - 3+ appearances: 1.4x+ (40%+ boost)
  *
- * @param resultGroups - Array of result sets from different queries/methods
- * @returns Fused results sorted by combined score
+ * Benefits over pure RRF:
+ * - Preserves semantic scores (0-1 range intact vs 0.016 in pure RRF)
+ * - Identifies high-confidence results (consensus across variants)
+ * - Better quality when all scores from same model (comparable)
+ * - Readable scores for debugging and analysis
+ *
+ * @param resultGroups - Array of result sets from different query variants
+ * @returns Fused results with consensus-boosted scores, sorted descending
  */
 export function reciprocalRankFusion(
   resultGroups: RetrievalResult[][],
 ): RetrievalResult[] {
-  const k = 60; // Standard RRF constant
-  const scoreMap = new Map<string, number>();
   const docMap = new Map<string, RetrievalResult>();
+  const appearanceCount = new Map<string, number>();
+  const originalScoresMap = new Map<string, number[]>();
 
-  // For each result group (from different queries or methods)
+  // Collect documents and track appearances + original scores across variants
   resultGroups.forEach((results) => {
-    results.forEach((result, rank) => {
-      const rrfScore = 1 / (k + rank + 1);
-      scoreMap.set(result.id, (scoreMap.get(result.id) || 0) + rrfScore);
-
-      // Keep first occurrence of document
+    results.forEach((result) => {
+      // Store document on first encounter
       if (!docMap.has(result.id)) {
         docMap.set(result.id, result);
+        originalScoresMap.set(result.id, []);
       }
+
+      // Count how many query variants returned this document
+      appearanceCount.set(result.id, (appearanceCount.get(result.id) || 0) + 1);
+
+      // Track all original scores for averaging
+      originalScoresMap.get(result.id)!.push(result.score);
     });
   });
 
-  // Convert back to results, sorted by RRF score
-  const fused: RetrievalResult[] = Array.from(scoreMap.entries())
-    .map(([id, score]) => ({
-      ...docMap.get(id)!,
-      score, // Replace with RRF score
-    }))
+  // Build fused results with consensus-boosted scores
+  const fused: RetrievalResult[] = Array.from(docMap.entries())
+    .map(([id, doc]) => {
+      const originalScores = originalScoresMap.get(id) || [];
+      // Average scores if document appeared multiple times
+      const avgOriginalScore =
+        originalScores.reduce((a, b) => a + b, 0) / originalScores.length;
+      const appearances = appearanceCount.get(id) || 1;
+
+      // Consensus boost: documents appearing in more variants get confidence multiplier
+      // Formula: 1.0x for 1 variant, 1.2x for 2 variants, 1.4x for 3+ variants
+      const consensusBoost = 1 + (appearances - 1) * 0.2;
+      const blendedScore = avgOriginalScore * consensusBoost;
+
+      return {
+        ...doc,
+        score: blendedScore, // Preserve original range but boosted by consensus
+      };
+    })
     .sort((a, b) => b.score - a.score);
 
   return fused;
-}
-
-// ============ SEMANTIC RERANKING ============
-
-/**
- * Confidence-based reranking using multi-query agreement
- * Documents appearing in results from multiple query variants receive a confidence boost
- *
- * Strategy:
- * - Count how many query variants returned each document
- * - Boost score based on appearance count: score *= (1 + appearanceCount * 0.3)
- * - Example: Doc in 3 variants → score × 1.9
- *
- * Cost: None (no external API calls, pure native logic)
- * Quality improvement: ~5-10% (encourages consensus across variants)
- *
- * @param candidates - Documents to rerank (from fusion or concatenation)
- * @param resultGroups - Original grouped results from each query variant
- * @param topK - Keep only top-K after reranking
- * @returns Reranked documents with confidence-boosted scores
- */
-export async function confidenceRerank(
-  candidates: RetrievalResult[],
-  resultGroups: RetrievalResult[][],
-  topK: number = 3,
-): Promise<RetrievalResult[]> {
-  if (candidates.length === 0) {
-    return [];
-  }
-
-  // Count appearance of each document across query variants
-  const appearanceCount = new Map<string, number>();
-  resultGroups.forEach((results) => {
-    results.forEach((result) => {
-      appearanceCount.set(result.id, (appearanceCount.get(result.id) || 0) + 1);
-    });
-  });
-
-  // Apply confidence boost based on multi-query agreement
-  const reranked = candidates.map((candidate) => {
-    const appearances = appearanceCount.get(candidate.id) || 1;
-    // Boost score: documents appearing in more variants get higher scores
-    // Formula: score * (1 + appearances * 0.3)
-    // 1 appearance: 1.3x, 2 appearances: 1.6x, 3+ appearances: 1.9x+
-    const confidenceBoost = 1 + appearances * 0.3;
-    return {
-      ...candidate,
-      score: candidate.score * confidenceBoost,
-    };
-  });
-
-  // Sort by boosted score and return top-K
-  return reranked.sort((a, b) => b.score - a.score).slice(0, topK);
 }
 
 // ============ OPTIMIZED RETRIEVAL PIPELINE ============
@@ -196,20 +154,24 @@ export interface OptimizedRetrievalOptions {
 
 /**
  * Complete optimized retrieval pipeline
- * Combines query expansion, fusion, and reranking for improved quality
+ * Combines query expansion and consensus-boosted fusion for improved quality
  *
  * Process:
- * 1. Expand query into multiple variants
- * 2. Search with each variant (standard retrieval)
- * 3. Fuse results from all variants using RRF
- * 4. Rerank top candidates by semantic similarity
- * 5. Return final top-K results
+ * 1. Expand query into multiple variants (different phrasings, key terms)
+ * 2. Search with each variant using semantic search
+ * 3. Fuse results using consensus boosting:
+ *    - Documents appearing in multiple variants get confidence boost
+ *    - Original semantic scores preserved, not replaced
+ *    - Boost formula: score * (1 + (appearances-1) * 0.2)
+ * 4. Return final top-K results with blended scores
  *
- *
+ * Quality: Better when query has multiple valid interpretations
+ * Latency: 3-4x baseline due to multiple embedding calls
+ * Cost: 3-4x API calls (baseline uses 1)
  *
  * @param question - User question
  * @param options - Configuration options
- * @returns Optimized retrieval results
+ * @returns Optimized retrieval results with consensus-boosted scores
  */
 export async function optimizedRetrieve(
   question: string,
@@ -258,29 +220,26 @@ export async function optimizedRetrieve(
       totalResultsBeforeFusion: totalResults,
     });
 
-    // Step 3: Fuse results if multiple queries
+    // Step 3: Fuse results if multiple queries (with consensus boosting)
     let fused: RetrievalResult[] = [];
     if (useFusion && queries.length > 1) {
       fused = reciprocalRankFusion(resultGroups);
-      logger.info('Result fusion complete', {
+      const avgScore =
+        fused.length > 0
+          ? (fused.reduce((sum, doc) => sum + doc.score, 0) / fused.length).toFixed(3)
+          : 'N/A';
+      logger.info('Result fusion with consensus boosting complete', {
         uniqueDocuments: fused.length,
+        averageScore: avgScore,
       });
     } else {
-      // If not fusing, flatten the grouped results
-      fused = resultGroups.flat();
+      // If not fusing, flatten and sort by score
+      fused = resultGroups.flat().sort((a, b) => b.score - a.score);
     }
 
-    // Step 4: Rerank results if enabled (only useful with multiple queries for agreement)
-    let final = fused;
-    if (useReranking && fused.length > 0 && queries.length > 1) {
-      final = await confidenceRerank(fused, resultGroups, topK);
-      logger.info('Confidence reranking complete', {
-        finalCount: final.length,
-      });
-    }
-
-    // Step 5: Return top-K results
-    const result = final.slice(0, topK);
+    // Step 4: Return top-K results
+    // NOTE: Consensus boosting already applied in fusion step
+    const result = fused.slice(0, topK);
     const totalTime = Date.now() - startTime;
 
     logger.info('Optimized retrieval pipeline complete', {
