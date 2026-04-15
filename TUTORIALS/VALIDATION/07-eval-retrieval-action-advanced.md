@@ -670,4 +670,17 @@ A: Based on production best practices. Adjust if needed for your use case.
 
 ---
 
-**Task Status**: ✅ COMPLETE AND TESTED
+## Notes
+
+Scenario:
+- 5 docs were seeded;
+- 4 answers are expected as correct, but 3 answers are returned; (Recall).
+- 2 of the the 3 answers are correct; (Precision).
+- The 2nd of the 3 returned answers is the 1st correct answer (MRR).
+- Given rank_weight(1, 0.6, 0.4, ...), weighted MRR is NDCG.
+
+Results:
+- Recall: 3/4 = 0.75
+- Precision: 2/3 = 0.67
+- MRR: 2/3 = 0.67
+- NDCG: 0.67 * 0.6 = 0.4
