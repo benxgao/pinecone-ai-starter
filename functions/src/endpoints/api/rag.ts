@@ -11,7 +11,8 @@ const router = Router();
  *
  * Request body:
  * {
- *   "question": "What is machine learning?"
+ *   "question": "What is machine learning?",
+ *   "useOptimization": false
  * }
  *
  * Response (200 OK):
@@ -46,7 +47,7 @@ const router = Router();
  */
 router.post('/ask', async (req: Request, res: Response) => {
   try {
-    const { question } = req.body;
+    const { question, useOptimization = false } = req.body;
 
     // Validation: question field required
     if (!question) {
@@ -58,7 +59,9 @@ router.post('/ask', async (req: Request, res: Response) => {
 
     // Validation: question must be a string
     if (typeof question !== 'string') {
-      logger.warn('RAG request: question not a string', { type: typeof question });
+      logger.warn('RAG request: question not a string', {
+        type: typeof question,
+      });
       return res.status(400).json({
         error: 'question must be a string',
       });
@@ -74,7 +77,9 @@ router.post('/ask', async (req: Request, res: Response) => {
 
     // Validation: question length limit
     if (question.length > 1000) {
-      logger.warn('RAG request: question too long', { length: question.length });
+      logger.warn('RAG request: question too long', {
+        length: question.length,
+      });
       return res.status(400).json({
         error: 'question too long (max 1000 characters)',
       });
@@ -83,10 +88,11 @@ router.post('/ask', async (req: Request, res: Response) => {
     logger.info('RAG request received', {
       questionLength: question.length,
       question: question.substring(0, 50),
+      useOptimization,
     });
 
     // Execute RAG pipeline
-    const result: RAGResult = await ask(question);
+    const result: RAGResult = await ask(question, useOptimization);
 
     logger.info('RAG response ready', {
       duration: result.duration,

@@ -1,4 +1,5 @@
 import { querySimilar, RetrievalResult } from './retrieval';
+import { optimizedRetrieve } from './optimization';
 import { getOpenAIClient } from '../../adapters/openai';
 import logger from '../firebase/logger';
 
@@ -51,9 +52,13 @@ Respond in clear, natural language.`;
  * Stage 5: Return answer with sources and metrics
  *
  * @param question - Natural language question to answer
+ * @param useOptimization - Use optimized retrieval with query expansion & fusion (default: false)
  * @returns RAGResult with answer, sources, and metrics
  */
-export async function ask(question: string): Promise<RAGResult> {
+export async function ask(
+  question: string,
+  useOptimization: boolean = false,
+): Promise<RAGResult> {
   const startTime = Date.now();
 
   // Input validation
@@ -73,11 +78,16 @@ export async function ask(question: string): Promise<RAGResult> {
   try {
     logger.info('🔍 RAG Pipeline Started', {
       question: trimmedQuestion.substring(0, 60),
+      useOptimization,
     });
 
     // STAGE 1 & 2: Retrieve relevant documents
-    logger.info('📚 Stage 1-2: Retrieving documents...');
-    const retrievalChunks = await querySimilar(trimmedQuestion, 3);
+    logger.info('📚 Stage 1-2: Retrieving documents...', {
+      method: useOptimization ? 'optimized' : 'baseline',
+    });
+    const retrievalChunks = useOptimization
+      ? await optimizedRetrieve(trimmedQuestion, { topK: 3 })
+      : await querySimilar(trimmedQuestion, 3);
 
     // Handle case where no documents retrieved
     if (retrievalChunks.length === 0) {
